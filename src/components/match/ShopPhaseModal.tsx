@@ -26,7 +26,6 @@ type Props = {
   inventory: MatchInventoryItem[]
   inventorySlots?: number
   busy?: boolean
-  error?: string | null
   justBoughtOfferId?: string | null
   justBoughtInventoryId?: string | null
   onBuy: (offerId: string) => void
@@ -47,7 +46,6 @@ export function ShopPhaseModal({
   inventory,
   inventorySlots = 3,
   busy,
-  error,
   justBoughtOfferId,
   justBoughtInventoryId,
   onBuy,

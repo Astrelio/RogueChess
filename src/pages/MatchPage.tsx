@@ -1534,7 +1534,6 @@ export function MatchPage() {
         inventory={yourInv}
         inventorySlots={you?.inventory_slots ?? 3}
         busy={busy}
-        error={error}
         justBoughtOfferId={justBoughtOfferId}
         justBoughtInventoryId={justBoughtInventoryId}
         onBuy={(offerId) => void buy(offerId)}
