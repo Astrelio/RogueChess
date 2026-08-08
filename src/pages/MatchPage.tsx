@@ -27,29 +27,9 @@ import {
 } from '@/lib/portal'
 import { previewAparicionFen, previewRemovePieceFen } from '@/lib/jokerOptimistic'
 import { fenHideEnemyInvisible } from '@/lib/invisibleFen'
+import { getMoveHints, pathBetween } from '@/lib/legalMoves'
 import { useLiveClocks } from '@/hooks/useLiveClocks'
 import type { MatchState, Joker, MatchPlayer, PieceFlag } from '@/types/match'
-
-/** Casillas estrictamente entre a y b (cliente; espejo de server/engine/board). */
-function pathBetweenClient(a: string, b: string): string[] {
-  const df = b.charCodeAt(0) - a.charCodeAt(0)
-  const dr = Number(b[1]) - Number(a[1])
-  const straight = df === 0 || dr === 0
-  const diagonal = Math.abs(df) === Math.abs(dr)
-  if (!straight && !diagonal) return []
-  const steps = Math.max(Math.abs(df), Math.abs(dr))
-  if (steps <= 1) return []
-  const sf = Math.sign(df)
-  const sr = Math.sign(dr)
-  const out: string[] = []
-  for (let i = 1; i < steps; i++) {
-    const file = a.charCodeAt(0) - 97 + sf * i
-    const rank = Number(a[1]) - 1 + sr * i
-    if (file < 0 || file > 7 || rank < 0 || rank > 7) break
-    out.push(String.fromCharCode(97 + file) + String(rank + 1))
-  }
-  return out
-}
 
 type JokerAim = {
   inventoryId: string
@@ -107,6 +87,7 @@ export function MatchPage() {
   const localDrag = useRef<{ from: string; piece: string } | null>(null)
   const [remoteDrag, setRemoteDrag] = useState<PieceDragPayload | null>(null)
   const [optimisticFen, setOptimisticFen] = useState<string | null>(null)
+  const [selectedSquare, setSelectedSquare] = useState<string | null>(null)
   const [aim, setAim] = useState<JokerAim | null>(null)
   const [justBoughtOfferId, setJustBoughtOfferId] = useState<string | null>(null)
   const [justBoughtInventoryId, setJustBoughtInventoryId] = useState<string | null>(null)
@@ -421,6 +402,40 @@ export function MatchPage() {
     return fenWithDragPreview(hidden, { from: remoteDrag.from, hover: remoteDrag.hover })
   }, [match, remoteDrag, optimisticFen, state?.flags, you?.color])
 
+  const blockedSquares = useMemo(() => {
+    const set = new Set<string>()
+    for (const c of state?.cells ?? []) {
+      if (c.is_active === false) continue
+      if (c.effect === 'burned' || c.effect === 'ruined') set.add(String(c.square).trim())
+    }
+    return set
+  }, [state?.cells])
+
+  const moveHints = useMemo(() => {
+    if (!match || !selectedSquare || !yourTurn || aim || busy || inShopPhase || isFinished || optimisticFen) {
+      return []
+    }
+    try {
+      const chess = new Chess(match.fen)
+      const piece = chess.get(selectedSquare as 'a1')
+      if (!piece || !you?.color || piece.color !== you.color[0]) return []
+    } catch {
+      return []
+    }
+    return getMoveHints(match.fen, selectedSquare, blockedSquares, match.current_dimension)
+  }, [
+    match,
+    selectedSquare,
+    yourTurn,
+    aim,
+    busy,
+    inShopPhase,
+    isFinished,
+    optimisticFen,
+    blockedSquares,
+    you?.color,
+  ])
+
   const dragSquareStyles = useMemo(() => {
     const styles: Record<string, React.CSSProperties> = {}
 
@@ -452,6 +467,29 @@ export function MatchPage() {
       }
     }
 
+    if (selectedSquare && !aim) {
+      styles[selectedSquare] = {
+        ...(styles[selectedSquare] ?? {}),
+        backgroundColor: 'rgba(212, 175, 55, 0.42)',
+        boxShadow: 'inset 0 0 0 2px rgba(212, 175, 55, 0.85)',
+      }
+    }
+    if (!aim) {
+      for (const hint of moveHints) {
+        if (hint.square === selectedSquare) continue
+        styles[hint.square] = {
+          ...(styles[hint.square] ?? {}),
+          backgroundColor: hint.capture ? 'rgba(61, 107, 79, 0.52)' : 'rgba(61, 107, 79, 0.4)',
+          boxShadow: hint.capture
+            ? 'inset 0 0 0 3px rgba(61, 107, 79, 0.9)'
+            : 'inset 0 0 0 2px rgba(61, 107, 79, 0.55)',
+          animationName: hint.capture ? 'rc-move-hint-capture' : 'rc-move-hint',
+          animationDuration: '1.1s',
+          animationTimingFunction: 'ease-in-out',
+          animationIterationCount: 'infinite',
+        }
+      }
+    }
     if (remoteDrag?.active) {
       styles[remoteDrag.from] = { backgroundColor: 'rgba(115, 92, 0, 0.28)' }
       if (remoteDrag.hover && remoteDrag.hover !== remoteDrag.from) {
@@ -480,26 +518,25 @@ export function MatchPage() {
       }
     }
     return Object.keys(styles).length ? styles : undefined
-  }, [remoteDrag, aim, state?.cells, boardFx])
+  }, [remoteDrag, aim, state?.cells, boardFx, selectedSquare, moveHints])
 
-  const blockedSquares = useMemo(() => {
-    const set = new Set<string>()
-    for (const c of state?.cells ?? []) {
-      if (c.is_active === false) continue
-      if (c.effect === 'burned' || c.effect === 'ruined') set.add(String(c.square).trim())
-    }
-    return set
-  }, [state?.cells])
-
-  // Esc cancela el apuntado del comodín
+  // Esc cancela el apuntado del comodín / deselecciona pieza
   useEffect(() => {
-    if (!aim) return
+    if (!aim && !selectedSquare) return
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') setAim(null)
+      if (e.key !== 'Escape') return
+      if (aim) setAim(null)
+      else setSelectedSquare(null)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [aim])
+  }, [aim, selectedSquare])
+
+  useEffect(() => {
+    if (!yourTurn || busy || inShopPhase || isFinished || optimisticFen || aim) {
+      setSelectedSquare(null)
+    }
+  }, [yourTurn, busy, inShopPhase, isFinished, optimisticFen, aim, match?.fen])
 
   function endLocalDrag() {
     const d = localDrag.current
@@ -519,6 +556,7 @@ export function MatchPage() {
   function startLocalDrag(from: string, piece: string) {
     if (!id) return
     localDrag.current = { from, piece }
+    setSelectedSquare(from)
     publishDragRef.current?.({
       matchId: id,
       from,
@@ -528,6 +566,50 @@ export function MatchPage() {
       uid: user?.uid,
       force: true,
     })
+  }
+
+  function selectOwnPiece(square: string | null | undefined) {
+    if (!square || !match || !you?.color || !yourTurn || busy || inShopPhase || isFinished || optimisticFen || aim) {
+      return
+    }
+    try {
+      const chess = new Chess(match.fen)
+      const piece = chess.get(square as 'a1')
+      if (!piece || piece.color !== you.color[0]) {
+        setSelectedSquare(null)
+        return
+      }
+    } catch {
+      setSelectedSquare(null)
+      return
+    }
+    setSelectedSquare((prev) => (prev === square ? null : square))
+  }
+
+  function onBoardSquareClick(square: string, pieceType?: string | null) {
+    if (aim) {
+      onAimSquare(square)
+      return
+    }
+    if (!yourTurn || busy || inShopPhase || isFinished || optimisticFen) return
+
+    if (selectedSquare) {
+      const legal = moveHints.some((h) => h.square === square)
+      if (legal) {
+        const ok = onPieceDrop({ sourceSquare: selectedSquare, targetSquare: square })
+        if (ok) setSelectedSquare(null)
+        return
+      }
+      // Clic en otra pieza propia → re-seleccionar
+      if (pieceType) {
+        selectOwnPiece(square)
+        return
+      }
+      setSelectedSquare(null)
+      return
+    }
+
+    if (pieceType) selectOwnPiece(square)
   }
 
   function hoverLocalDrag(square: string) {
@@ -614,7 +696,7 @@ export function MatchPage() {
 
     // Trayectoria (no caballos): no cruzar quemadas
     if (piece && piece.type !== 'n') {
-      const path = pathBetweenClient(sourceSquare, dest)
+      const path = pathBetween(sourceSquare, dest)
       if (path.some((sq) => blockedSquares.has(sq))) {
         setError('La trayectoria cruza una zona quemada o en ruina')
         return false
@@ -1189,8 +1271,8 @@ export function MatchPage() {
                   yourTurn && !busy && !inShopPhase && !isFinished && !optimisticFen && !aim,
                 animationDurationInMs: 280,
                 squareStyles: dragSquareStyles,
-                onSquareClick: ({ square }) => {
-                  if (aim) onAimSquare(square)
+                onSquareClick: ({ square, piece }) => {
+                  onBoardSquareClick(square, piece?.pieceType)
                 },
                 onPieceDrag: ({ piece, square }) => {
                   if (aim || !square) return
@@ -1204,12 +1286,14 @@ export function MatchPage() {
                 },
                 onPieceDrop: ({ sourceSquare, targetSquare }) => {
                   if (aim) return false
-                  return onPieceDrop({ sourceSquare, targetSquare })
+                  const ok = onPieceDrop({ sourceSquare, targetSquare })
+                  if (ok) setSelectedSquare(null)
+                  return ok
                 },
                 boardStyle: {
                   borderRadius: '4px',
                   boxShadow: '0 12px 40px rgba(115,92,0,0.08)',
-                  cursor: aim ? 'crosshair' : undefined,
+                  cursor: aim ? 'crosshair' : selectedSquare ? 'pointer' : undefined,
                 },
                 lightSquareStyle: { backgroundColor: '#f5f4ef' },
                 darkSquareStyle: { backgroundColor: '#d0c5af' },

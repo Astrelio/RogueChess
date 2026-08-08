@@ -164,3 +164,26 @@
 .rc-fx-vanish {
   animation: rc-joker-vanish 0.45s ease-out both;
 }
+
+/* Destinos legales al seleccionar / arrastrar una pieza */
+@keyframes rc-move-hint {
+  0%,
+  100% {
+    background-color: rgba(61, 107, 79, 0.38);
+  }
+  50% {
+    background-color: rgba(61, 107, 79, 0.58);
+  }
+}
+
+@keyframes rc-move-hint-capture {
+  0%,
+  100% {
+    background-color: rgba(61, 107, 79, 0.48);
+    box-shadow: inset 0 0 0 3px rgba(61, 107, 79, 0.85);
+  }
+  50% {
+    background-color: rgba(61, 107, 79, 0.68);
+    box-shadow: inset 0 0 0 3px rgba(90, 150, 110, 0.95);
+  }
+}
