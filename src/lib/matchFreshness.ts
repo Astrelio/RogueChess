@@ -1,6 +1,20 @@
 import type { MatchState } from '@/types/match'
 import type { MatchBoardSnapshot } from '@/lib/portal'
 
+/**
+ * Orden de fase dentro de un ciclo: waiting < action < shop.
+ * Al cerrar tienda el server sube cycle_index al pasar a active (grieta).
+ * NUNCA puntuar active > shop en el mismo ciclo (rompía el mercado).
+ */
+function phaseRank(status: string, phase?: string): number {
+  if (status === 'finished') return 90
+  if (status === 'dimension_reveal') return 30
+  if (status === 'shop' || phase === 'shop') return 20
+  if (status === 'active' || phase === 'action' || phase === 'grieta') return 10
+  if (status === 'waiting') return 1
+  return 0
+}
+
 /** Progreso monotónico de la partida (mayor = más reciente). */
 export function matchProgress(m: {
   cycle_index: number
@@ -8,10 +22,8 @@ export function matchProgress(m: {
   status: string
   phase?: string
 }): number {
-  const finished = m.status === 'finished' ? 2_000_000 : 0
-  const active = m.status === 'active' || m.phase === 'action' ? 100_000 : 0
-  const shop = m.status === 'shop' || m.phase === 'shop' ? 50_000 : 0
-  return finished + active + shop + m.cycle_index * 1_000 + m.moves_in_phase
+  if (m.status === 'finished') return 1_000_000_000_000 + m.cycle_index
+  return m.cycle_index * 1_000_000 + phaseRank(m.status, m.phase) * 1_000 + m.moves_in_phase
 }
 
 /** ¿El estado REST entrante está detrás del que ya tenemos? */
@@ -30,23 +42,43 @@ export function isStaleBoardPulse(
   if (typeof board.at === 'number' && board.at > 0 && board.at < lastBoardAt) return true
   if (!current) return false
   if (current.match.status === 'finished' && board.status !== 'finished') return true
-  if (board.preview) {
-    // Preview nunca puede ir “hacia atrás” respecto al progreso ya aplicado
-    const pulseProgress =
-      (board.status === 'finished' ? 2_000_000 : 0) +
-      board.cycle_index * 1_000 +
-      board.moves_in_phase
-    return pulseProgress < matchProgress(current.match)
-  }
-  if (!board.fen && board.status !== 'finished') {
-    // Solo relojes: no regresar progreso; el `at` ya se validó arriba
-    return false
-  }
+
   const pulse = {
     cycle_index: board.cycle_index || 0,
     moves_in_phase: board.moves_in_phase || 0,
     status: board.status || current.match.status,
     phase: board.phase || current.match.phase,
   }
+
+  if (board.preview) {
+    return matchProgress(pulse) < matchProgress(current.match)
+  }
+
+  // Relojes sin FEN y sin cambio de fase
+  if (
+    !board.fen &&
+    board.status !== 'finished' &&
+    board.status !== 'shop' &&
+    board.status !== 'active' &&
+    board.status !== 'dimension_reveal'
+  ) {
+    return false
+  }
+
+  // Pulso solo-reloj (fen vacío, status vacío): no comparar progreso
+  if (!board.fen && !board.status) return false
+
   return matchProgress(pulse) < matchProgress(current.match)
+}
+
+/** Detecta cambio de fase/status relevante para UI (tienda ↔ acción ↔ fin). */
+export function isPhaseTransition(
+  prev: { status: string; phase?: string; cycle_index: number } | null | undefined,
+  next: { status: string; phase?: string; cycle_index: number },
+): boolean {
+  if (!prev) return Boolean(next.status)
+  if (prev.status !== next.status) return true
+  if ((prev.phase || '') !== (next.phase || '')) return true
+  if (prev.cycle_index !== next.cycle_index) return true
+  return false
 }

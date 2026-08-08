@@ -35,7 +35,8 @@ Docs: https://docs.useportal.co/
 - **`match_board`** (ephemeral) → pulso FEN + `clock_running_for` + tiempos (≤2KB); `preview: true` = solo FEN (no reloj)
 - **`match_clocks`** (ephemeral) → tiempos + `clock_running_for`
 - Publish: **board + ext + dirty en paralelo**; **no** se publican previews optimistas (solo UI local)
-- Anti-stale: set de `at` propios + watermark `lastSeenAt` + progreso cycle/moves en MatchPage; GET fuera de orden se descarta
+- Anti-stale: progreso cycle/phase/moves (action < shop < next cycle); GET fuera de orden se descarta
+- Cambio de fase (tienda↔acción) via `match_board` + dirty → UI inmediata + refetch Neon (inventario)
 - Metadata del canal match: `joinedAt` estable (evita “channel already created with different options”)
 - Reconexión / `visibilitychange`: refetch Neon para no perder el fin si saliste del navegador
 - Reloj en vivo: solo el lado de `clock_running_for`; Petrificus congela; Arresto ×2 visual

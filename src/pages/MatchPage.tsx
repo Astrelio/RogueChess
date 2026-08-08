@@ -27,7 +27,7 @@ import {
 } from '@/lib/portal'
 import { previewAparicionFen, previewRemovePieceFen } from '@/lib/jokerOptimistic'
 import { fenHideEnemyInvisible } from '@/lib/invisibleFen'
-import { isStaleBoardPulse, isStaleMatchState } from '@/lib/matchFreshness'
+import { isPhaseTransition, isStaleBoardPulse, isStaleMatchState } from '@/lib/matchFreshness'
 import { useLiveClocks } from '@/hooks/useLiveClocks'
 import type { MatchState, Joker, MatchPlayer, PieceFlag } from '@/types/match'
 
@@ -150,8 +150,7 @@ export function MatchPage() {
       // No aplicar REST viejo (poll/dirty atrasado) encima de un estado más nuevo
       if (isStaleMatchState(s, stateRef.current)) return
       stateRef.current = s
-      lastBoardAtRef.current = Math.max(lastBoardAtRef.current, Date.now())
-      lastClockAtRef.current = lastBoardAtRef.current
+      // No pisar lastBoardAt con Date.now(): bloquearía pulsos Portal legítimos
       setState(s)
       setOptimisticFen(null)
       setRemoteDrag(null)
@@ -199,27 +198,28 @@ export function MatchPage() {
       const current = stateRef.current
       if (isStaleBoardPulse(board, current, lastBoardAtRef.current)) return
 
-      // Preview: solo capa optimista, y solo si no vamos atrás
       if (board.preview && board.fen) {
-        if (typeof board.at === 'number' && board.at > 0) {
-          // No subir lastBoardAt con preview (el auth real debe ganar siempre)
-        }
         setOptimisticFen(board.fen)
         return
       }
 
       if (typeof board.at === 'number' && board.at > 0) {
-        if (board.fen || board.status === 'finished') {
+        if (board.fen || board.status === 'finished' || board.status === 'shop' || board.status === 'active') {
           lastBoardAtRef.current = Math.max(lastBoardAtRef.current, board.at)
         } else {
-          // Solo relojes
           if (board.at < lastClockAtRef.current) return
           lastClockAtRef.current = board.at
         }
       }
 
+      const phaseChanging = isPhaseTransition(current?.match, {
+        status: board.status || current?.match.status || '',
+        phase: board.phase || current?.match.phase,
+        cycle_index: board.cycle_index || current?.match.cycle_index || 0,
+      })
+
       setRemoteDrag(null)
-      if (board.fen || board.status === 'finished') {
+      if (board.fen || board.status === 'finished' || phaseChanging) {
         setOptimisticFen(null)
       }
 
@@ -239,6 +239,45 @@ export function MatchPage() {
               ...(board.result !== undefined ? { result: board.result } : {}),
               ...(board.winner_id !== undefined ? { winner_id: board.winner_id } : {}),
             },
+          }
+          stateRef.current = next
+          return next
+        }
+
+        if (phaseChanging || board.status === 'shop' || board.status === 'active') {
+          const nextRunning =
+            board.clock_running_for !== undefined
+              ? board.clock_running_for
+              : phaseChanging
+                ? null
+                : prev.match.clock_running_for
+
+          const next: MatchState = {
+            ...prev,
+            match: {
+              ...prev.match,
+              ...(board.fen ? { fen: board.fen } : {}),
+              cycle_index: board.cycle_index || prev.match.cycle_index,
+              moves_in_phase:
+                board.moves_in_phase !== undefined && board.moves_in_phase !== null
+                  ? board.moves_in_phase
+                  : prev.match.moves_in_phase,
+              status: (board.status || prev.match.status) as MatchState['match']['status'],
+              phase: (board.phase || prev.match.phase) as MatchState['match']['phase'],
+              white_time_ms: board.white_time_ms || prev.match.white_time_ms,
+              black_time_ms: board.black_time_ms || prev.match.black_time_ms,
+              turn_color: (board.turn_color || prev.match.turn_color) as MatchState['match']['turn_color'],
+              clock_running_for: nextRunning,
+              clock_updated_at: new Date(board.at || Date.now()).toISOString(),
+            },
+            ...(board.status === 'active' && prev.match.status === 'shop' ? { shop: [] } : {}),
+            ...(board.status === 'shop' && prev.match.status !== 'shop'
+              ? {
+                  players: prev.players.map((pl) =>
+                    pl.is_bot ? pl : { ...pl, shop_ready: pl.id === prev.you?.id ? pl.shop_ready : false },
+                  ),
+                }
+              : {}),
           }
           stateRef.current = next
           return next
@@ -288,7 +327,8 @@ export function MatchPage() {
         return next
       })
 
-      if (board.status === 'finished') {
+      // Portal anuncia la fase; Neon completa shop/inventory
+      if (board.status === 'finished' || phaseChanging) {
         syncFromServer()
         return
       }
