@@ -3,7 +3,6 @@ import { chebyshev, fileOf, pathBetween, rankOf, squareAt } from './board.js'
 import { blockedSquares } from './dimensions.js'
 import type { Color, EngineContext } from './types.js'
 
-const SLIDERS = new Set<PieceSymbol>(['q', 'r', 'b'])
 const KNIGHT_DELTAS: [number, number][] = [
   [1, 2],
   [2, 1],

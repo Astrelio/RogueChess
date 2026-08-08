@@ -575,9 +575,7 @@ test('morsmordre: fizzle si retroceso está quemado', () => {
 })
 
 test('ghost + cadena_sangre: no permite quieto si hay captura', () => {
-  const fen = '8/8/8/3p4/4P3/8/8/K6k w - - 0 1'
-  // Torre en a1 no hay — peón e4 puede capturar d5. Ghost en a-file no aplica.
-  // Usar torre blanca a4, peón negro a6 en el camino, destino a7 quieto, y captura disponible e4xd5
+  // Torre blanca a4 atraviesa peón negro a6 hacia a7 (quieto); captura e4xd5 disponible
   const fen2 = '8/8/p7/3p4/R3P3/8/8/K6k w - - 0 1'
   const ctx = makeCtx({
     fen: fen2,
