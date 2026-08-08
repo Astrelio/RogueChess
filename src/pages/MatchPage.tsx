@@ -18,6 +18,7 @@ import { JokerTargetBanner } from '@/components/match/JokerTargetBanner'
 import { MatchPortalBridge, type MatchPortalPeerInfo } from '@/components/match/MatchPortalBridge'
 import { ShopPhaseModal, ShopWaitOverlay } from '@/components/match/ShopPhaseModal'
 import { VictoryOverlay } from '@/components/match/VictoryOverlay'
+import { SpotifyMatchWidget } from '@/components/match/SpotifyMatchWidget'
 import { PageTransition } from '@/components/PageTransition'
 import {
   portalReady,
@@ -1346,6 +1347,7 @@ export function MatchPage() {
                       {emote}
                     </button>
                   ))}
+                  <SpotifyMatchWidget matchId={id} dimension={match.current_dimension} />
                   <button type="button" onClick={() => void resign()} className="btn-ghost">
                     Rendirse
                   </button>
