@@ -63,6 +63,13 @@ Docs: https://docs.useportal.co/
 - `portal/extensions/matchState.ts`
 - Deploy: `npm run portal:deploy` con env `PORTAL_SECRET` = secret key (`sk_…` de `.env`)
 - Último deploy: `cfg_a6b21995…` — canales `lobby:presence`, `match:*` + extensión `matchState`
+- **Orígenes del browser** (si no, 403 + WS cerrado → sin realtime):
+  ```bash
+  portal login
+  portal origins add https://rogue-chess-psi.vercel.app --env env_b1efbe9ecaa6419a8cd17cbf6ab757a8
+  portal origins add http://localhost:5173 --env env_b1efbe9ecaa6419a8cd17cbf6ab757a8
+  ```
+- Fallback: si Portal no está `ready`, MatchPage hace poll a Neon ~1.5s
 
 ## Flujo jugada
 

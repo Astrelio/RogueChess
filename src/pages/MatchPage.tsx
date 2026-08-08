@@ -324,6 +324,16 @@ export function MatchPage() {
     return () => window.clearInterval(t)
   }, [isWaitingRival, id, syncFromServer])
 
+  // Si Portal no está ready (origen no registrado, 403, etc.), Neon poll
+  // para que el rival vea turnos sin depender del websocket.
+  useEffect(() => {
+    if (!id || isFinished || isWaitingRival) return
+    if (!match || (match.status !== 'active' && match.status !== 'shop')) return
+    if (peerInfo?.status === 'ready') return
+    const t = window.setInterval(() => syncFromServer(), 1500)
+    return () => window.clearInterval(t)
+  }, [id, isFinished, isWaitingRival, match?.status, peerInfo?.status, syncFromServer])
+
   // Activity Portal: “shopping” mientras estás en el mercado
   useEffect(() => {
     if (!isShop) return
