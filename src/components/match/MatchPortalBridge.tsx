@@ -2,7 +2,12 @@ import { useEffect, useMemo } from 'react'
 import type { MutableRefObject } from 'react'
 import { useMatchRealtime } from '@/hooks/useMatchRealtime'
 import { useAuth } from '@/auth/AuthContext'
-import type { MatchBoardSnapshot, PieceDragPayload } from '@/lib/portal'
+import type {
+  MatchBoardSnapshot,
+  MatchEmotePayload,
+  PieceDragPayload,
+  ShopReadyPayload,
+} from '@/lib/portal'
 import type { MatchState } from '@/types/match'
 
 type PublishFn = (state: MatchState, reason?: string) => Promise<void>
@@ -13,6 +18,20 @@ type PublishBoardFn = (
   state: MatchState,
   opts?: { preview?: boolean },
 ) => Promise<void>
+type PublishShopReadyFn = (payload: {
+  matchId: string
+  uid: string
+  color: 'white' | 'black'
+  cycle_index: number
+}) => Promise<void>
+type PublishEmoteFn = (payload: { matchId: string; uid: string; emote: string }) => Promise<void>
+
+export type MatchPortalPeerInfo = {
+  status: string
+  peerCount: number
+  rivalOnline: boolean
+  shoppingActivity: boolean
+}
 
 export function MatchPortalBridge({
   matchId,
@@ -20,18 +39,32 @@ export function MatchPortalBridge({
   onDirty,
   onBoardPulse,
   onPieceDrag,
+  onShopReady,
+  onEmote,
+  onChannelReady,
+  onPeerInfo,
   publishRef,
   publishDragRef,
   publishBoardRef,
+  publishShopReadyRef,
+  publishEmoteRef,
+  sendActivityRef,
 }: {
   matchId: string
   color?: string
   onDirty: (reason: string) => void
   onBoardPulse: (board: MatchBoardSnapshot) => void
   onPieceDrag: (drag: PieceDragPayload) => void
+  onShopReady?: (p: ShopReadyPayload) => void
+  onEmote?: (p: MatchEmotePayload) => void
+  onChannelReady?: () => void
+  onPeerInfo?: (info: MatchPortalPeerInfo) => void
   publishRef: MutableRefObject<PublishFn | null>
   publishDragRef: MutableRefObject<PublishDragFn | null>
   publishBoardRef?: MutableRefObject<PublishBoardFn | null>
+  publishShopReadyRef?: MutableRefObject<PublishShopReadyFn | null>
+  publishEmoteRef?: MutableRefObject<PublishEmoteFn | null>
+  sendActivityRef?: MutableRefObject<((kind: string) => void) | null>
 }) {
   const { profile, user } = useAuth()
 
@@ -46,12 +79,25 @@ export function MatchPortalBridge({
     [color, profile?.username, user?.uid],
   )
 
-  const { publishState, publishPieceDrag, publishBoardPulse, presence, status } = useMatchRealtime({
+  const {
+    publishState,
+    publishPieceDrag,
+    publishBoardPulse,
+    publishShopReady,
+    publishEmote,
+    sendActivity,
+    presence,
+    status,
+    activity,
+  } = useMatchRealtime({
     matchId,
     metadata,
     onDirty,
     onBoardPulse,
     onPieceDrag,
+    onShopReady,
+    onEmote,
+    onChannelReady,
   })
 
   useEffect(() => {
@@ -77,11 +123,41 @@ export function MatchPortalBridge({
   }, [publishBoardPulse, publishBoardRef])
 
   useEffect(() => {
-    if (status !== 'ready') return
+    if (!publishShopReadyRef) return
+    publishShopReadyRef.current = publishShopReady
+    return () => {
+      publishShopReadyRef.current = null
+    }
+  }, [publishShopReady, publishShopReadyRef])
+
+  useEffect(() => {
+    if (!publishEmoteRef) return
+    publishEmoteRef.current = publishEmote
+    return () => {
+      publishEmoteRef.current = null
+    }
+  }, [publishEmote, publishEmoteRef])
+
+  useEffect(() => {
+    if (!sendActivityRef) return
+    sendActivityRef.current = sendActivity
+    return () => {
+      sendActivityRef.current = null
+    }
+  }, [sendActivity, sendActivityRef])
+
+  useEffect(() => {
     const n =
       presence?.kind === 'detailed' || presence?.kind === 'aggregate' ? presence.count : 0
     document.documentElement.dataset.portalMatchPeers = String(n)
-  }, [presence, status])
+    const shoppingActivity = activity.some((a) => a.kind === 'shopping')
+    onPeerInfo?.({
+      status,
+      peerCount: n,
+      rivalOnline: n >= 2,
+      shoppingActivity,
+    })
+  }, [presence, status, activity, onPeerInfo])
 
   return null
 }

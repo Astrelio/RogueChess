@@ -348,7 +348,24 @@ export function applyPlayerMove(ctx: EngineContext, input: MoveInput): MoveResul
   for (const f of ctx.flags) {
     if (!f.square) continue
     if (f.square === from && f.color === ctx.moverColor) {
-      ops.flagOps.push({ op: 'move', pieceUid: f.piece_uid, square: to })
+      // Capa: al atacar (capturar) la pieza deja de ser invisible
+      if (isCapture && f.is_invisible) {
+        ops.flagOps.push({
+          op: 'upsert',
+          pieceUid: f.piece_uid,
+          color: f.color,
+          kind: f.kind,
+          square: to,
+          wasPawn: f.was_pawn,
+          isInvisible: false,
+          multijugosQueen: f.multijugos_queen,
+          multijugosDiesPly: f.multijugos_dies_ply,
+          payload: f.payload,
+        })
+        ops.events.push(`Capa de invisibilidad: la pieza en ${to} se revela al atacar`)
+      } else {
+        ops.flagOps.push({ op: 'move', pieceUid: f.piece_uid, square: to })
+      }
     } else if (f.square === to && f.color !== ctx.moverColor && isCapture) {
       ops.flagOps.push({ op: 'remove', pieceUid: f.piece_uid })
     }

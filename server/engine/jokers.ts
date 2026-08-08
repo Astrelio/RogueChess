@@ -133,15 +133,12 @@ export function applyJoker(
       }
       if (!adjacent) return fail('Morsmordre: la pieza enemiga debe estar adyacente a una tuya')
 
-      // Expecto Patronum del rival anula el miedo
-      const expecto = ctx.effects.some(
-        (e) =>
-          e.is_active &&
-          e.kind === 'expecto_patronum' &&
-          e.applied_by === ctx.opponentPlayerId,
-      )
+      // Expecto Patronum anula el miedo en TODO el tablero (GDD)
+      const expecto =
+        ctx.expectoPatronumActive ||
+        ctx.effects.some((e) => e.is_active && e.kind === 'expecto_patronum')
       if (expecto) {
-        ops.events.push('Morsmordre: Expecto Patronum protege al rival — el hechizo se disipa')
+        ops.events.push('Morsmordre: Expecto Patronum protege el tablero — el hechizo se disipa')
         return ok(ops, { fizzled: true })
       }
 

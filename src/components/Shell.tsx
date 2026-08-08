@@ -1,16 +1,40 @@
-import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
+import { Link, NavLink, useLocation } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect, useId, useRef, useState } from 'react'
 import { useAuth } from '@/auth/AuthContext'
-import { api } from '@/lib/api'
 import { PortalLiveChrome } from '@/components/PortalLiveChrome'
+import { LobbyPresenceProvider } from '@/hooks/useLobbyPresence'
+import { PortalInboxProvider, usePortalInbox } from '@/hooks/usePortalInbox'
+import { MatchmakingProvider, useMatchmaking } from '@/components/MatchmakingProvider'
 import { cn } from '@/lib/utils'
 import { pageFade, easeOut } from '@/lib/motion'
 
 export function Shell({ children }: { children: React.ReactNode }) {
-  const { user } = useAuth()
   const location = useLocation()
   const isLanding = location.pathname === '/'
+
+  return (
+    <LobbyPresenceProvider>
+      <PortalInboxProvider>
+        <MatchmakingProvider>
+          <ShellChrome isLanding={isLanding}>{children}</ShellChrome>
+        </MatchmakingProvider>
+      </PortalInboxProvider>
+    </LobbyPresenceProvider>
+  )
+}
+
+function ShellChrome({
+  children,
+  isLanding,
+}: {
+  children: React.ReactNode
+  isLanding: boolean
+}) {
+  const { user } = useAuth()
+  const location = useLocation()
+  const matchmaking = useMatchmaking()
+  const inbox = usePortalInbox()
 
   return (
     <div
@@ -39,7 +63,18 @@ export function Shell({ children }: { children: React.ReactNode }) {
               transition={{ delay: 0.35, duration: 0.5, ease: easeOut }}
             />
           </Link>
-          {user ? <UserMenu /> : <GuestMenu />}
+          {user ? (
+            <UserMenu
+              onPlay={() => {
+                void matchmaking.start()
+              }}
+              playBusy={matchmaking.busy}
+              inboxBadge={inbox.badge}
+              onClearInbox={() => inbox.markAllRead()}
+            />
+          ) : (
+            <GuestMenu />
+          )}
         </div>
       </motion.header>
 
@@ -89,12 +124,20 @@ function GuestMenu() {
   )
 }
 
-function UserMenu() {
-  const { profile, user, logout, getToken } = useAuth()
-  const navigate = useNavigate()
+function UserMenu({
+  onPlay,
+  playBusy,
+  inboxBadge = 0,
+  onClearInbox,
+}: {
+  onPlay: () => void
+  playBusy?: boolean
+  inboxBadge?: number
+  onClearInbox?: () => void
+}) {
+  const { profile, user, logout } = useAuth()
   const location = useLocation()
   const [open, setOpen] = useState(false)
-  const [busyPlay, setBusyPlay] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
   const menuId = useId()
 
@@ -124,22 +167,6 @@ function UserMenu() {
     setOpen(false)
   }, [location.pathname])
 
-  async function playQuick() {
-    setBusyPlay(true)
-    try {
-      const token = await getToken()
-      if (!token) {
-        navigate('/login')
-        return
-      }
-      const { match } = await api.startQuickMatch(token)
-      setOpen(false)
-      navigate(`/partida/${match.id}`)
-    } finally {
-      setBusyPlay(false)
-    }
-  }
-
   return (
     <div ref={rootRef} className="relative">
       <motion.button
@@ -149,9 +176,12 @@ function UserMenu() {
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={menuId}
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          setOpen((v) => !v)
+          if (inboxBadge > 0) onClearInbox?.()
+        }}
         className={cn(
-          'flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border transition',
+          'relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border transition',
           open
             ? 'border-[var(--color-primary)] ring-2 ring-[var(--color-primary-container)]/50'
             : 'border-[var(--color-outline-soft)]/70 hover:border-[var(--color-primary)]/60',
@@ -162,6 +192,11 @@ function UserMenu() {
         ) : (
           <span className="font-display text-sm text-[var(--color-primary)]">{initial}</span>
         )}
+        {inboxBadge > 0 ? (
+          <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--color-primary)] px-1 font-label text-[9px] text-[var(--color-on-primary)]">
+            {inboxBadge > 9 ? '9+' : inboxBadge}
+          </span>
+        ) : null}
       </motion.button>
 
       <AnimatePresence>
@@ -185,10 +220,13 @@ function UserMenu() {
             </div>
             <ul className="font-label py-1 text-[11px] uppercase tracking-[0.14em]">
               <MenuAction
-                disabled={busyPlay}
-                onClick={() => void playQuick()}
+                disabled={playBusy}
+                onClick={() => {
+                  setOpen(false)
+                  onPlay()
+                }}
               >
-                {busyPlay ? 'Emparejando…' : 'Jugar'}
+                {playBusy ? 'Buscando…' : 'Jugar'}
               </MenuAction>
               <MenuLink to="/ranking" onNavigate={() => setOpen(false)}>
                 Ranking

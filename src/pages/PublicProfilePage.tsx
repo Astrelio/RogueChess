@@ -4,6 +4,7 @@ import { motion } from 'framer-motion'
 import { api } from '@/lib/api'
 import { useAuth } from '@/auth/AuthContext'
 import { PageTransition } from '@/components/PageTransition'
+import { useChallengePlayer } from '@/hooks/useChallengePlayer'
 import { presenceLabel } from '@/lib/utils'
 import { riseItem, stagger } from '@/lib/motion'
 import type { Profile } from '@/types'
@@ -11,6 +12,7 @@ import type { Profile } from '@/types'
 export function PublicProfilePage() {
   const { username = '' } = useParams()
   const { getToken, user } = useAuth()
+  const challenge = useChallengePlayer()
   const [profile, setProfile] = useState<Profile | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
@@ -83,18 +85,32 @@ export function PublicProfilePage() {
           {profile.wins}W / {profile.losses}L / {profile.draws}D · ♥ {profile.popularity_score}
         </motion.p>
         {user ? (
-          <motion.button
-            type="button"
-            variants={riseItem}
-            whileHover={{ y: -1 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={() => void like()}
-            className="btn-ghost mt-6"
-          >
-            Super like
-          </motion.button>
+          <div className="mt-6 flex flex-wrap gap-3">
+            <motion.button
+              type="button"
+              variants={riseItem}
+              whileHover={{ y: -1 }}
+              whileTap={{ scale: 0.98 }}
+              disabled={challenge.busy}
+              onClick={() => void challenge.challengeUsername(profile.username)}
+              className="btn-primary disabled:opacity-50"
+            >
+              {challenge.busy ? 'Retando…' : 'Retar vía Portal'}
+            </motion.button>
+            <motion.button
+              type="button"
+              variants={riseItem}
+              whileHover={{ y: -1 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => void like()}
+              className="btn-ghost"
+            >
+              Super like
+            </motion.button>
+          </div>
         ) : null}
         {msg ? <p className="mt-3 text-sm text-[var(--color-online)]">{msg}</p> : null}
+        {challenge.error ? <p className="mt-3 text-sm text-[var(--color-error)]">{challenge.error}</p> : null}
       </motion.section>
     </PageTransition>
   )

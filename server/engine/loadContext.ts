@@ -78,5 +78,6 @@ export function buildContext(args: {
     giratiempoActive: Boolean(mover?.giratiempo_active),
     giratiempoMovesLeft: Number(mover?.giratiempo_moves_left ?? 0),
     giratiempoCaptures: Number(mover?.giratiempo_captures ?? 0),
+    expectoPatronumActive: Boolean(m.expecto_patronum_active),
   }
 }

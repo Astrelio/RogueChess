@@ -71,6 +71,49 @@ export const api = {
   startQuickMatch: (token: string) =>
     request<{ match: { id: string }; state: MatchState }>('/api/matches/quick', { method: 'POST', token }),
 
+  createChallengeMatch: (token: string, timeControlS = 300) =>
+    request<{ match: { id: string; status: string }; state: MatchState }>('/api/matches/challenge', {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ timeControlS }),
+    }),
+
+  joinMatch: (token: string, id: string) =>
+    request<{ state: MatchState }>(`/api/matches/${id}/join`, { method: 'POST', token }),
+
+  enqueueMatch: (token: string, timeControlS = 300) =>
+    request<{
+      queue: {
+        id: string
+        status: string
+        matched_match_id: string | null
+      }
+      state: MatchState | null
+    }>('/api/matches/queue', {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ timeControlS }),
+    }),
+
+  getQueue: (token: string) =>
+    request<{
+      queue: {
+        id: string
+        status: string
+        matched_match_id: string | null
+      } | null
+      state: MatchState | null
+    }>('/api/matches/queue', { token }),
+
+  cancelQueue: (token: string) =>
+    request<{ ok: boolean }>('/api/matches/queue/cancel', { method: 'POST', token }),
+
+  queueFallbackBot: (token: string) =>
+    request<{ match: { id: string }; state: MatchState; vsBot: boolean }>(
+      '/api/matches/queue/bot',
+      { method: 'POST', token },
+    ),
+
   getMatch: (token: string, id: string) =>
     request<{ state: MatchState }>(`/api/matches/${id}`, { token }),
 
@@ -105,8 +148,15 @@ export const api = {
   closeShop: (token: string, id: string) =>
     request<{ state: MatchState }>(`/api/matches/${id}/shop/close`, { method: 'POST', token }),
 
+  claimShopTimeout: (token: string, id: string) =>
+    request<{ state: MatchState }>(`/api/matches/${id}/shop/timeout`, { method: 'POST', token }),
+
   resignMatch: (token: string, id: string) =>
     request<{ state: MatchState }>(`/api/matches/${id}/resign`, { method: 'POST', token }),
+
+  /** Declara flag: el reloj en vivo llegó a 0 (server valida con clock_updated_at). */
+  claimTimeout: (token: string, id: string) =>
+    request<{ state: MatchState }>(`/api/matches/${id}/timeout`, { method: 'POST', token }),
 
   jokersCatalog: () =>
     request<{ jokers: Joker[] }>('/api/matches/catalog/jokers'),

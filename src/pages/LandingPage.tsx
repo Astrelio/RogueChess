@@ -1,36 +1,15 @@
-import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/auth/AuthContext'
-import { api } from '@/lib/api'
 import { PageTransition } from '@/components/PageTransition'
+import { useMatchmaking } from '@/components/MatchmakingProvider'
 import { easeOut, riseItem, stagger } from '@/lib/motion'
 
 const MASCOT_SRC = '/mascot/Bishop.png'
 
 export function LandingPage() {
-  const { user, ready, getToken } = useAuth()
-  const navigate = useNavigate()
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  async function playQuick() {
-    setBusy(true)
-    setError(null)
-    try {
-      const token = await getToken()
-      if (!token) {
-        navigate('/login')
-        return
-      }
-      const { match } = await api.startQuickMatch(token)
-      navigate(`/partida/${match.id}`)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo crear la partida')
-    } finally {
-      setBusy(false)
-    }
-  }
+  const { user, ready } = useAuth()
+  const matchmaking = useMatchmaking()
 
   return (
     <PageTransition className="flex min-h-0 flex-1 flex-col justify-center">
@@ -42,7 +21,6 @@ export function LandingPage() {
             aria-label="RogueChess"
           >
             <svg viewBox="0 0 24 24" width="38" height="38" fill="currentColor" aria-hidden>
-              {/* Rey ♔ */}
               <path d="M11 2h2v2h2v2h-2v1.05A5.5 5.5 0 0 1 17.5 12.5V15h-2.5v-2.5a3 3 0 0 0-6 0V15H6.5v-2.5A5.5 5.5 0 0 1 11 7.05V6H9V4h2V2z" />
               <path d="M7 16.5h10l.75 2.25H6.25L7 16.5z" />
               <path d="M5.5 19.5h13V21.5h-13v-2z" />
@@ -71,13 +49,13 @@ export function LandingPage() {
               <>
                 <motion.button
                   type="button"
-                  disabled={busy}
+                  disabled={matchmaking.busy}
                   whileHover={{ y: -2 }}
                   whileTap={{ scale: 0.98 }}
-                  onClick={() => void playQuick()}
+                  onClick={() => void matchmaking.start()}
                   className="btn-primary disabled:opacity-50"
                 >
-                  {busy ? 'Emparejando…' : 'Partida rápida'}
+                  {matchmaking.busy ? 'Buscando…' : 'Partida rápida'}
                 </motion.button>
                 <motion.div whileHover={{ y: -2 }} whileTap={{ scale: 0.98 }}>
                   <Link to="/ranking" className="btn-ghost inline-block">
@@ -93,7 +71,6 @@ export function LandingPage() {
               </motion.div>
             )}
           </motion.div>
-          {error ? <p className="mt-4 text-sm text-[var(--color-error)]">{error}</p> : null}
         </motion.div>
 
         <motion.div

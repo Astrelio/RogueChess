@@ -16,6 +16,8 @@
     "db:patch:joker-ply": "node scripts/apply-sql.mjs db/patch_phase2_joker_ply.sql",
     "db:patch:giratiempo": "node scripts/apply-sql.mjs db/patch_phase2_giratiempo.sql",
     "db:patch:clocks": "node scripts/apply-sql.mjs db/patch_phase2_clocks.sql",
+    "db:patch:matchmaking": "node scripts/apply-sql.mjs db/patch_matchmaking_queue.sql",
+    "db:patch:shop-ready": "node scripts/apply-sql.mjs db/patch_shop_ready.sql",
     "test": "tsx --test server/engine/engine.test.ts"
   },
   "dependencies": {

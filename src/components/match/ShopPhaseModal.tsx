@@ -17,6 +17,8 @@ type Props = {
   open: boolean
   cycleIndex: number
   timeMs: number
+  /** Ms restantes del minuto de tienda. */
+  shopLeftMs: number
   offers: ShopOffer[]
   inventory: MatchInventoryItem[]
   inventorySlots?: number
@@ -36,6 +38,7 @@ export function ShopPhaseModal({
   open,
   cycleIndex,
   timeMs,
+  shopLeftMs,
   offers,
   inventory,
   inventorySlots = 3,
@@ -48,6 +51,7 @@ export function ShopPhaseModal({
   onContinue,
 }: Props) {
   const [flashOffer, setFlashOffer] = useState<string | null>(null)
+  const urgent = shopLeftMs > 0 && shopLeftMs <= 15000
 
   useEffect(() => {
     if (!open) return
@@ -115,23 +119,47 @@ export function ShopPhaseModal({
                     Mercado de comodines
                   </h2>
                   <p className="mt-2 max-w-md text-sm text-[var(--color-ink-muted)]">
-                    El tiempo es tu moneda. Cuatro ofertas del ciclo — sin repetir el mismo comodín.
+                    El tiempo es tu moneda. Cuatro ofertas — 1 minuto para comprar o cerrar.
                   </p>
                 </div>
-                <div className="text-right">
-                  <p className="font-label text-[10px] uppercase tracking-[0.16em] text-[var(--color-ink-muted)]">
-                    Tu reloj
-                  </p>
-                  <motion.p
-                    key={timeMs}
-                    initial={{ scale: 1.08, color: 'var(--color-primary)' }}
-                    animate={{ scale: 1, color: 'var(--color-ink)' }}
-                    transition={{ duration: 0.45, ease: easeOut }}
-                    className="font-display text-3xl tabular-nums"
-                  >
-                    {formatMs(timeMs)}
-                  </motion.p>
+                <div className="flex gap-6 text-right">
+                  <div>
+                    <p className="font-label text-[10px] uppercase tracking-[0.16em] text-[var(--color-ink-muted)]">
+                      Cierra en
+                    </p>
+                    <motion.p
+                      key={Math.floor(shopLeftMs / 1000)}
+                      initial={{ scale: 1.06 }}
+                      animate={{ scale: 1 }}
+                      className={`font-display text-3xl tabular-nums ${
+                        urgent ? 'text-[var(--color-error)]' : 'text-[var(--color-primary)]'
+                      }`}
+                    >
+                      {formatMs(shopLeftMs)}
+                    </motion.p>
+                  </div>
+                  <div>
+                    <p className="font-label text-[10px] uppercase tracking-[0.16em] text-[var(--color-ink-muted)]">
+                      Tu reloj
+                    </p>
+                    <motion.p
+                      key={timeMs}
+                      initial={{ scale: 1.08, color: 'var(--color-primary)' }}
+                      animate={{ scale: 1, color: 'var(--color-ink)' }}
+                      transition={{ duration: 0.45, ease: easeOut }}
+                      className="font-display text-3xl tabular-nums"
+                    >
+                      {formatMs(timeMs)}
+                    </motion.p>
+                  </div>
                 </div>
+              </div>
+              <div className="relative mt-4 h-1.5 overflow-hidden rounded-full bg-[var(--color-surface-high)]">
+                <motion.div
+                  className={`h-full rounded-full ${urgent ? 'bg-[var(--color-error)]' : 'bg-[var(--color-primary-container)]'}`}
+                  animate={{ width: `${Math.max(2, Math.min(100, (shopLeftMs / 60000) * 100))}%` }}
+                  transition={{ duration: 0.25, ease: 'linear' }}
+                />
               </div>
             </header>
 
@@ -178,7 +206,7 @@ export function ShopPhaseModal({
                               Comprado
                             </motion.span>
                           ) : null}
-                          <JokerCard joker={offer.joker as Joker} size={112} disabled={busy || !canBuy} />
+                          <JokerCard joker={offer.joker as Joker} size={148} disabled={busy || !canBuy} />
                           <div className="text-center">
                             <p className="font-display text-base text-[var(--color-ink)]">{offer.joker.name}</p>
                             <p className="font-label mt-1 text-[11px] uppercase tracking-wider text-[var(--color-primary)]">
@@ -234,7 +262,7 @@ export function ShopPhaseModal({
                         >
                           <JokerCard
                             joker={item.joker as Joker}
-                            size={96}
+                            size={124}
                             disabled={busy}
                             onClick={() => onSell(item.id)}
                           />
@@ -253,7 +281,7 @@ export function ShopPhaseModal({
                   {Array.from({ length: emptySlots }).map((_, i) => (
                     <div
                       key={`empty-${i}`}
-                      className="flex h-[148px] w-[120px] items-center justify-center border border-dashed border-[var(--color-outline-soft)]/50 text-[10px] uppercase tracking-wider text-[var(--color-outline)]"
+                      className="flex h-[168px] w-[140px] items-center justify-center border border-dashed border-[var(--color-outline-soft)]/50 text-[10px] uppercase tracking-wider text-[var(--color-outline)]"
                     >
                       Vacío
                     </div>
@@ -273,7 +301,7 @@ export function ShopPhaseModal({
             <footer className="border-t hairline bg-[color-mix(in_srgb,var(--color-surface-low)_80%,transparent)] px-5 py-4 sm:px-8">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-sm text-[var(--color-ink-muted)]">
-                  Al continuar se revela la dimensión del próximo ciclo.
+                  Al cerrar esperas al rival; cuando ambos listos se revela la dimensión.
                 </p>
                 <button
                   type="button"
@@ -281,13 +309,101 @@ export function ShopPhaseModal({
                   onClick={onContinue}
                   className="btn-primary min-w-[200px] disabled:opacity-50"
                 >
-                  {busy ? 'Cerrando…' : 'Cerrar tienda → Grieta'}
+                  {busy ? 'Listo…' : 'Listo · esperar rival'}
                 </button>
               </div>
             </footer>
           </motion.div>
         </motion.div>
       ) : null}
+    </AnimatePresence>,
+    document.body,
+  )
+}
+
+type WaitProps = {
+  open: boolean
+  peek: boolean
+  shopLeftMs: number
+  rivalShopping?: boolean
+  onPeek: () => void
+  onBack: () => void
+}
+
+/** Espera al rival tras cerrar tienda; opcionalmente mira el tablero. */
+export function ShopWaitOverlay({ open, peek, shopLeftMs, rivalShopping, onPeek, onBack }: WaitProps) {
+  if (!open) return null
+
+  if (peek) {
+    return createPortal(
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="pointer-events-auto fixed bottom-4 left-1/2 z-[125] flex w-[min(100%-2rem,420px)] -translate-x-1/2 flex-col gap-2 border border-[var(--color-outline-soft)]/60 bg-[color-mix(in_srgb,var(--color-surface)_92%,#fff)] px-4 py-3 shadow-[0_16px_40px_rgba(27,28,25,0.18)] sm:flex-row sm:items-center sm:justify-between"
+      >
+        <div>
+          <p className="font-label text-[10px] uppercase tracking-[0.18em] text-[var(--color-primary)]">
+            Esperando rival · {formatMs(shopLeftMs)}
+          </p>
+          <p className="mt-1 text-sm text-[var(--color-ink-muted)]">Mirando el tablero</p>
+        </div>
+        <button type="button" className="btn-ghost shrink-0 px-3 py-2 text-[10px]" onClick={onBack}>
+          Volver a espera
+        </button>
+      </motion.div>,
+      document.body,
+    )
+  }
+
+  return createPortal(
+    <AnimatePresence>
+      <motion.div
+        className="fixed inset-0 z-[120] flex items-center justify-center p-6"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+      >
+        <div
+          aria-hidden
+          className="absolute inset-0 bg-[color-mix(in_srgb,var(--color-ink)_38%,transparent)] backdrop-blur-[8px]"
+        />
+        <motion.div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="shop-wait-title"
+          className="panel relative z-10 w-full max-w-md border-[var(--color-outline-soft)]/55 bg-[color-mix(in_srgb,#fff_92%,transparent)] p-8 text-center shadow-[0_24px_60px_rgba(115,92,0,0.14)]"
+          initial={{ opacity: 0, y: 20, scale: 0.97 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: 0.35, ease: easeOut }}
+        >
+          <p className="font-label text-[10px] uppercase tracking-[0.22em] text-[var(--color-primary)]">
+            Mercado cerrado
+          </p>
+          <h2 id="shop-wait-title" className="font-display mt-2 text-3xl text-[var(--color-primary)]">
+            Esperando al rival
+          </h2>
+          <p className="mt-3 text-sm text-[var(--color-ink-muted)]">
+            Ya marcaste listo. Cuando el otro cierre la tienda (o acabe el minuto) se abre la grieta.
+            {rivalShopping ? ' El rival sigue eligiendo comodines (Portal activity).' : ''}
+          </p>
+          <p className="font-display mt-6 text-4xl tabular-nums text-[var(--color-ink)]">
+            {formatMs(shopLeftMs)}
+          </p>
+          <div className="mt-6 flex justify-center gap-2" aria-hidden>
+            {[0, 1, 2].map((i) => (
+              <motion.span
+                key={i}
+                className="h-2 w-2 rounded-full bg-[var(--color-primary)]"
+                animate={{ opacity: [0.25, 1, 0.25], y: [0, -4, 0] }}
+                transition={{ duration: 1.1, repeat: Infinity, delay: i * 0.18, ease: 'easeInOut' }}
+              />
+            ))}
+          </div>
+          <button type="button" className="btn-primary mt-8 w-full" onClick={onPeek}>
+            Ver piezas del tablero
+          </button>
+        </motion.div>
+      </motion.div>
     </AnimatePresence>,
     document.body,
   )

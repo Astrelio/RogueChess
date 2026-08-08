@@ -52,6 +52,8 @@ export type EngineContext = {
   giratiempoActive: boolean
   giratiempoMovesLeft: number
   giratiempoCaptures: number
+  /** Expecto Patronum activo en la partida (anula Morsmordre en todo el tablero). */
+  expectoPatronumActive: boolean
 }
 
 export type CellOp =

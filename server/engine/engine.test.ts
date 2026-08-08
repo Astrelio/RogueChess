@@ -24,6 +24,7 @@ function makeCtx(overrides: Partial<EngineContext> & { fen: string }): EngineCon
     giratiempoActive: false,
     giratiempoMovesLeft: 0,
     giratiempoCaptures: 0,
+    expectoPatronumActive: false,
     ...overrides,
   }
 }
@@ -299,6 +300,38 @@ test('morsmordre: Expecto Patronum del rival lo anula', () => {
   )
   assert.equal(res.ok, true)
   if (res.ok) assert.equal(res.fizzled, true)
+})
+
+test('morsmordre: Expecto propio (global) también anula Morsmordre', () => {
+  const byFlag = applyJoker(
+    makeCtx({
+      fen: '7k/8/8/3p4/3P4/8/8/K7 w - - 0 1',
+      expectoPatronumActive: true,
+    }),
+    'morsmordre',
+    { square: 'd5' },
+  )
+  assert.equal(byFlag.ok, true)
+  if (byFlag.ok) assert.equal(byFlag.fizzled, true)
+
+  const byOwnEffect = applyJoker(
+    makeCtx({
+      fen: '7k/8/8/3p4/3P4/8/8/K7 w - - 0 1',
+      effects: [
+        {
+          id: 'ef-me',
+          kind: 'expecto_patronum',
+          applied_by: 'p-me',
+          payload: {},
+          is_active: true,
+        },
+      ],
+    }),
+    'morsmordre',
+    { square: 'd5' },
+  )
+  assert.equal(byOwnEffect.ok, true)
+  if (byOwnEffect.ok) assert.equal(byOwnEffect.fizzled, true)
 })
 
 test('bombarda: sacrifica peón, quema 3x3 vacías, empuja reyes primero', () => {

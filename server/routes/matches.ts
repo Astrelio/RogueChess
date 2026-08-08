@@ -81,18 +81,21 @@ async function getState(matchId: string, firebaseUid?: string): Promise<Record<s
     display_name: profilesById[p.profile_id as string]?.display_name,
   }))
 
+  const flags = await getPieceFlags(matchId)
+
   return {
     ...state,
     players: enrichedPlayers,
     shop: enrichedShop,
     inventory: enrichedInv,
+    flags,
     you,
   }
 }
 
 matchesRouter.post('/quick', requireAuth, async (req, res, next) => {
   try {
-    // Por ahora: partida vs bot inmediata (5 min)
+    // Partida vs bot inmediata (fallback / práctica)
     const rows = await sql`
       SELECT * FROM fn_create_match(
         ${req.user!.uid},
@@ -107,6 +110,149 @@ matchesRouter.post('/quick', requireAuth, async (req, res, next) => {
     const match = rows[0]
     const state = await getState(match.id as string, req.user!.uid)
     res.json({ match, state })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/** Crea partida en waiting para reto Portal (el rival hace join). */
+matchesRouter.post('/challenge', requireAuth, async (req, res, next) => {
+  try {
+    const timeControlS = z.number().int().min(60).max(1800).optional().parse(req.body?.timeControlS) ?? 300
+    const rows = await sql`
+      SELECT * FROM fn_create_match(
+        ${req.user!.uid},
+        'quick'::match_mode,
+        ${timeControlS},
+        'white'::player_color,
+        NULL,
+        TRUE,
+        TRUE
+      )
+    `
+    const match = rows[0]
+    const state = await getState(match.id as string, req.user!.uid)
+    res.json({ match, state })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/** Aceptar reto / unirse a partida waiting. */
+matchesRouter.post('/:id/join', requireAuth, async (req, res, next) => {
+  try {
+    await sql`
+      SELECT * FROM fn_join_match(${req.user!.uid}, ${req.params.id}::uuid, NULL, NULL)
+    `
+    const state = await getState(req.params.id, req.user!.uid)
+    res.json({ state })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/** Entra a la cola PvP. Si hay alguien esperando, crea la partida al instante. */
+matchesRouter.post('/queue', requireAuth, async (req, res, next) => {
+  try {
+    const timeControlS = z.number().int().min(60).max(1800).optional().parse(req.body?.timeControlS) ?? 300
+    const rows = await sql`
+      SELECT * FROM fn_enqueue_matchmaking(${req.user!.uid}, NULL, ${timeControlS})
+    `
+    const queue = rows[0] as Record<string, unknown>
+    let state = null
+    if (queue.status === 'matched' && queue.matched_match_id) {
+      state = await getState(String(queue.matched_match_id), req.user!.uid)
+    }
+    res.json({ queue, state })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/** Estado de la cola del jugador (o última matched reciente). */
+matchesRouter.get('/queue', requireAuth, async (req, res, next) => {
+  try {
+    const profile = await sql`
+      SELECT id FROM profiles WHERE firebase_uid = ${req.user!.uid} LIMIT 1
+    `
+    const pid = profile[0]?.id as string | undefined
+    if (!pid) {
+      res.status(404).json({ error: 'profile not found' })
+      return
+    }
+    const rows = await sql`
+      SELECT * FROM matchmaking_queue
+      WHERE profile_id = ${pid}::uuid
+      ORDER BY created_at DESC
+      LIMIT 1
+    `
+    const queue = (rows[0] as Record<string, unknown> | undefined) ?? null
+    let state = null
+    if (queue?.status === 'matched' && queue.matched_match_id) {
+      state = await getState(String(queue.matched_match_id), req.user!.uid)
+    }
+    res.json({ queue, state })
+  } catch (err) {
+    next(err)
+  }
+})
+
+matchesRouter.post('/queue/cancel', requireAuth, async (req, res, next) => {
+  try {
+    try {
+      await sql`SELECT fn_cancel_matchmaking(${req.user!.uid})`
+    } catch {
+      // Fallback si el patch aún no está aplicado
+      const profile = await sql`
+        SELECT id FROM profiles WHERE firebase_uid = ${req.user!.uid} LIMIT 1
+      `
+      const pid = profile[0]?.id as string | undefined
+      if (pid) {
+        await sql`
+          UPDATE matchmaking_queue SET status = 'cancelled'
+          WHERE profile_id = ${pid}::uuid AND status = 'queued'
+        `
+      }
+    }
+    res.json({ ok: true })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/**
+ * Tras esperar sin rival humano: cancela cola y crea bot.
+ */
+matchesRouter.post('/queue/bot', requireAuth, async (req, res, next) => {
+  try {
+    try {
+      await sql`SELECT fn_cancel_matchmaking(${req.user!.uid})`
+    } catch {
+      const profile = await sql`
+        SELECT id FROM profiles WHERE firebase_uid = ${req.user!.uid} LIMIT 1
+      `
+      const pid = profile[0]?.id as string | undefined
+      if (pid) {
+        await sql`
+          UPDATE matchmaking_queue SET status = 'cancelled'
+          WHERE profile_id = ${pid}::uuid AND status = 'queued'
+        `
+      }
+    }
+    const rows = await sql`
+      SELECT * FROM fn_create_match(
+        ${req.user!.uid},
+        'bot'::match_mode,
+        300,
+        'white'::player_color,
+        NULL,
+        TRUE,
+        FALSE
+      )
+    `
+    const match = rows[0]
+    const state = await getState(match.id as string, req.user!.uid)
+    res.json({ match, state, vsBot: true })
   } catch (err) {
     next(err)
   }
@@ -273,10 +419,28 @@ async function maybeBotMove(
 
 matchesRouter.post('/:id/shop/close', requireAuth, async (req, res, next) => {
   try {
-    await sql`SELECT * FROM fn_close_shop(${req.params.id}::uuid)`
-    // After dimension reveal, if bot to move, play
+    await sql`SELECT * FROM fn_player_ready_shop(${req.user!.uid}, ${req.params.id}::uuid)`
     let state = await getState(req.params.id, req.user!.uid)
-    state = await maybeBotMove(req.params.id, state, req.user!.uid)
+    // Si ya salió de shop (ambos listos / timeout), el bot puede mover
+    const match = state?.match as { status?: string } | undefined
+    if (match?.status === 'active') {
+      state = await maybeBotMove(req.params.id, state!, req.user!.uid)
+    }
+    res.json({ state })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/** Fuerza cierre de tienda si ya pasó el minuto. */
+matchesRouter.post('/:id/shop/timeout', requireAuth, async (req, res, next) => {
+  try {
+    await sql`SELECT * FROM fn_force_close_shop_if_due(${req.params.id}::uuid)`
+    let state = await getState(req.params.id, req.user!.uid)
+    const match = state?.match as { status?: string } | undefined
+    if (match?.status === 'active') {
+      state = await maybeBotMove(req.params.id, state!, req.user!.uid)
+    }
     res.json({ state })
   } catch (err) {
     next(err)
@@ -436,6 +600,120 @@ matchesRouter.post('/:id/joker/use', requireAuth, async (req, res, next) => {
 
     const after = await getState(matchId, req.user!.uid)
     res.json({ state: after, events: result.events, fizzled: result.fizzled ?? false })
+  } catch (err) {
+    next(err)
+  }
+})
+
+matchesRouter.post('/:id/timeout', requireAuth, async (req, res, next) => {
+  try {
+    const matchId = req.params.id
+    const state = await getState(matchId, req.user!.uid)
+    if (!state) {
+      res.status(404).json({ error: 'match not found' })
+      return
+    }
+    const you = state.you as Record<string, unknown> | null
+    if (!you) {
+      res.status(403).json({ error: 'not in match' })
+      return
+    }
+
+    const matchRows = await sql`
+      SELECT * FROM matches WHERE id = ${matchId}::uuid LIMIT 1
+    `
+    const m = matchRows[0] as Record<string, unknown> | undefined
+    if (!m) {
+      res.status(404).json({ error: 'match not found' })
+      return
+    }
+    if (m.status === 'finished') {
+      res.json({ state: await getState(matchId, req.user!.uid) })
+      return
+    }
+    if (m.status !== 'active') {
+      res.status(409).json({ error: 'el reloj no corre fuera de la fase de acción' })
+      return
+    }
+
+    const running = m.clock_running_for as 'white' | 'black' | null
+    if (!running) {
+      res.status(409).json({ error: 'el reloj está en pausa' })
+      return
+    }
+
+    const players = await sql`
+      SELECT id, color, arresto_pending, time_ms, profile_id
+      FROM match_players WHERE match_id = ${matchId}::uuid
+    `
+    const flagged = players.find((p) => p.color === running) as
+      | { id: string; color: string; arresto_pending: boolean; time_ms: number; profile_id: string }
+      | undefined
+    if (!flagged) {
+      res.status(500).json({ error: 'jugador del reloj no encontrado' })
+      return
+    }
+
+    const updatedAt = m.clock_updated_at ? new Date(String(m.clock_updated_at)).getTime() : null
+    const elapsed =
+      updatedAt != null && Number.isFinite(updatedAt)
+        ? Math.max(0, Date.now() - updatedAt)
+        : 0
+    const rate = flagged.arresto_pending ? 2 : 1
+    const spend = elapsed * rate
+
+    const stored =
+      running === 'white' ? Number(m.white_time_ms) : Number(m.black_time_ms)
+    const remaining = Math.max(0, stored - spend)
+
+    // Actualizar relojes al instante del claim
+    if (running === 'white') {
+      await sql`
+        UPDATE matches SET
+          white_time_ms = ${remaining},
+          clock_updated_at = now()
+        WHERE id = ${matchId}::uuid
+      `
+    } else {
+      await sql`
+        UPDATE matches SET
+          black_time_ms = ${remaining},
+          clock_updated_at = now()
+        WHERE id = ${matchId}::uuid
+      `
+    }
+    await sql`
+      UPDATE match_players SET time_ms = ${remaining}
+      WHERE id = ${flagged.id}::uuid
+    `
+    if (flagged.arresto_pending && spend > 0) {
+      await sql`
+        UPDATE match_players SET arresto_pending = FALSE WHERE id = ${flagged.id}::uuid
+      `
+    }
+
+    if (remaining > 0) {
+      res.status(409).json({
+        error: 'aún queda tiempo en el reloj',
+        remainingMs: remaining,
+        state: await getState(matchId, req.user!.uid),
+      })
+      return
+    }
+
+    const winnerId =
+      running === 'white' ? (m.black_id as string) : (m.white_id as string)
+
+    await sql`
+      SELECT * FROM fn_finish_match(
+        ${matchId}::uuid,
+        'timeout'::match_result,
+        ${winnerId}::uuid
+      )
+    `
+
+    const after = await getState(matchId, req.user!.uid)
+    res.json({ state: after })
   } catch (err) {
     next(err)
   }

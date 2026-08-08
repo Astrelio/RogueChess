@@ -16,6 +16,10 @@ type Args = {
   onDirty?: (reason: string) => void
   onBoardPulse?: (board: MatchBoardSnapshot) => void
   onPieceDrag?: (drag: PieceDragPayload) => void
+  onShopReady?: (p: import('@/lib/portal').ShopReadyPayload) => void
+  onEmote?: (p: import('@/lib/portal').MatchEmotePayload) => void
+  /** Canal listo / reconectado → refetch Neon (fin de partida, late-join). */
+  onChannelReady?: () => void
 }
 
 function boardFromState(state: MatchState): MatchBoardSnapshot {
@@ -31,13 +35,15 @@ function boardFromState(state: MatchState): MatchBoardSnapshot {
     phase: m.phase,
     cycle_index: m.cycle_index,
     moves_in_phase: m.moves_in_phase,
+    result: m.result ?? null,
+    winner_id: m.winner_id ?? null,
     at: Date.now(),
   }
 }
 
 /**
  * Canal Portal por partida.
- * Neon = autoridad; Portal = dirty + board + drag live + extensión.
+ * Neon = autoridad; Portal = dirty + board + drag live + extensión + match_over.
  */
 export function useMatchRealtime({
   matchId,
@@ -46,30 +52,42 @@ export function useMatchRealtime({
   onDirty,
   onBoardPulse,
   onPieceDrag,
+  onShopReady,
+  onEmote,
+  onChannelReady,
 }: Args) {
   const channelId = portalReady && enabled && matchId ? matchChannelId(matchId) : undefined
   const skipOwn = useRef<number | null>(null)
   const lastDragAt = useRef(0)
+  const wasReady = useRef(false)
   const onDirtyRef = useRef(onDirty)
   const onBoardRef = useRef(onBoardPulse)
   const onDragRef = useRef(onPieceDrag)
+  const onShopReadyRef = useRef(onShopReady)
+  const onEmoteRef = useRef(onEmote)
+  const onReadyRef = useRef(onChannelReady)
   onDirtyRef.current = onDirty
   onBoardRef.current = onBoardPulse
   onDragRef.current = onPieceDrag
+  onShopReadyRef.current = onShopReady
+  onEmoteRef.current = onEmote
+  onReadyRef.current = onChannelReady
 
-  const { send, status, presence, setMetadata, ext, me } = useChannel<
+  const { send, status, presence, setMetadata, ext, me, activity, sendActivity } = useChannel<
     MatchChannelPayload | MatchBoardSnapshot
   >({
     channelId,
-    history: 8,
+    history: 12,
     metadata: metadata ?? { role: 'player', joinedAt: Date.now() },
     onMessage: (msg) => {
       if (msg.type === 'match.state.updated') {
         const board = msg.content as MatchBoardSnapshot
-        if (!board?.fen) return
-        // Mismo at que nuestro publish → eco de extensión; no reaplicar
+        if (!board?.fen && board?.status !== 'finished') return
         if (skipOwn.current !== null && board.at === skipOwn.current) return
         onBoardRef.current?.(board)
+        if (board.status === 'finished') {
+          onDirtyRef.current?.('match_over_ext')
+        }
         return
       }
 
@@ -81,15 +99,49 @@ export function useMatchRealtime({
         return
       }
 
+      if (content.type === 'shop_ready') {
+        onShopReadyRef.current?.(content)
+        return
+      }
+
+      if (content.type === 'match_emote') {
+        onEmoteRef.current?.(content)
+        return
+      }
+
       if (content.type === 'match_dirty') {
         if (skipOwn.current !== null && content.at === skipOwn.current) return
         onDirtyRef.current?.(content.reason)
         return
       }
 
+      if (content.type === 'match_over') {
+        if (skipOwn.current !== null && content.at === skipOwn.current) return
+        onBoardRef.current?.({
+          matchId: content.matchId,
+          fen: content.fen,
+          white_time_ms: 0,
+          black_time_ms: 0,
+          turn_color: 'white',
+          clock_running_for: null,
+          status: 'finished',
+          phase: '',
+          cycle_index: 0,
+          moves_in_phase: 0,
+          result: content.result,
+          winner_id: content.winner_id,
+          at: content.at,
+        })
+        onDirtyRef.current?.('match_over')
+        return
+      }
+
       if (content.type === 'match_board') {
         if (skipOwn.current !== null && content.at === skipOwn.current) return
         onBoardRef.current?.(content)
+        if (content.status === 'finished') {
+          onDirtyRef.current?.('match_over_board')
+        }
         return
       }
 
@@ -116,11 +168,22 @@ export function useMatchRealtime({
   })
 
   useEffect(() => {
-    if (status !== 'ready') return
+    if (status !== 'ready') {
+      wasReady.current = false
+      return
+    }
     const snap = ext?.matchState as MatchBoardSnapshot | undefined
-    if (!snap?.fen) return
-    if (skipOwn.current !== null && snap.at === skipOwn.current) return
-    onBoardRef.current?.(snap)
+    if (snap?.fen || snap?.status === 'finished') {
+      if (skipOwn.current === null || snap.at !== skipOwn.current) {
+        onBoardRef.current?.(snap)
+        if (snap.status === 'finished') onDirtyRef.current?.('match_over_ext')
+      }
+    }
+    // Primera vez ready o reconexión tras caída
+    if (!wasReady.current) {
+      wasReady.current = true
+      onReadyRef.current?.()
+    }
   }, [status, ext])
 
   useEffect(() => {
@@ -134,10 +197,31 @@ export function useMatchRealtime({
       const at = Date.now()
       skipOwn.current = at
       const board = { ...boardFromState(state), at }
+      const finished = state.match.status === 'finished'
 
       await send({
-        content: { type: 'match_dirty', matchId: state.match.id, reason, at },
+        content: {
+          type: 'match_dirty',
+          matchId: state.match.id,
+          reason: finished ? reason || 'match_over' : reason,
+          at,
+        },
       })
+
+      if (finished) {
+        // Persistente: quien vuelva a la pestaña / late-join lo ve en history
+        await send({
+          content: {
+            type: 'match_over',
+            matchId: state.match.id,
+            status: 'finished',
+            result: state.match.result ?? null,
+            winner_id: state.match.winner_id ?? null,
+            fen: state.match.fen,
+            at,
+          },
+        })
+      }
 
       await send({
         ephemeral: true,
@@ -179,7 +263,6 @@ export function useMatchRealtime({
     async (state: MatchState, opts?: { preview?: boolean }) => {
       if (!channelId) return
       const at = Date.now()
-      // Evitar eco propio que reescribe reloj/turno con un preview stale
       skipOwn.current = at
       const board = {
         ...boardFromState(state),
@@ -203,7 +286,6 @@ export function useMatchRealtime({
     (drag: Omit<PieceDragPayload, 'type' | 'at'> & { force?: boolean }) => {
       if (!channelId) return
       const now = Date.now()
-      // Throttle moves; always send start/end (active flip / force)
       if (!drag.force && drag.active && now - lastDragAt.current < 40) return
       lastDragAt.current = now
       void send({
@@ -223,14 +305,48 @@ export function useMatchRealtime({
     [channelId, send],
   )
 
+  const publishShopReady = useCallback(
+    async (payload: { matchId: string; uid: string; color: 'white' | 'black'; cycle_index: number }) => {
+      if (!channelId) return
+      await send({
+        ephemeral: true,
+        content: {
+          type: 'shop_ready',
+          ...payload,
+          at: Date.now(),
+        },
+      })
+    },
+    [channelId, send],
+  )
+
+  const publishEmote = useCallback(
+    async (payload: { matchId: string; uid: string; emote: string }) => {
+      if (!channelId) return
+      await send({
+        ephemeral: true,
+        content: {
+          type: 'match_emote',
+          ...payload,
+          at: Date.now(),
+        },
+      })
+    },
+    [channelId, send],
+  )
+
   return {
     ready: portalReady && Boolean(channelId),
     status,
     presence,
+    activity,
     me,
+    sendActivity,
     publishState,
     publishClocks,
     publishBoardPulse,
     publishPieceDrag,
+    publishShopReady,
+    publishEmote,
   }
 }

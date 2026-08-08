@@ -48,6 +48,13 @@ app.use((err: unknown, _req: express.Request, res: express.Response, _next: expr
   res.status(500).json({ error: message })
 })
 
-app.listen(port, () => {
+const server = app.listen(port, () => {
   console.log(`RogueChess API on http://localhost:${port}`)
+})
+server.on('error', (err: NodeJS.ErrnoException) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`Puerto ${port} ocupado — cierra el otro proceso de la API e inténtalo de nuevo`)
+    process.exit(1)
+  }
+  throw err
 })

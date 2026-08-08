@@ -84,7 +84,8 @@ Prioridad orientativa (lo visto en playtests y en código). No es lista exhausti
 ### Alta (juego / confianza)
 | Tema | Notas |
 |------|--------|
-| **Más bugs de comodines** | Varios se sienten lentos o poco claros; conviene pase sistemático (Imperius, Bombarda, Capa, Multijugos, Defodio, Paso fantasma, Expecto…). |
+| **Capa de invisibilidad** | Flags al cliente + ocultar del rival; se revela al capturar. Expecto Patronum es global (anula Morsmordre en todo el tablero). |
+| **Timeout / flag** | Corregido: el cliente declara `POST /timeout` cuando el reloj vivo llega a 0 (antes solo se checaba al mover). |
 | **PvP real + Portal** | Bot funciona; falta validar bien 2 humanos (late-join, desync, ecos). |
 | **Neon de cada entorno** | Quien use DB propia debe aplicar schema + patches; si no, relojes/jokers/tienda fallan en silencio o con 500. |
 | **Documentación Portal “final” hackathon** | Ampliar `PORTAL_USAGE.md` a pitch (diagrama jugada→REST→publish, screenshots). |
@@ -111,6 +112,9 @@ Prioridad orientativa (lo visto en playtests y en código). No es lista exhausti
 - Tienda reaparecía un instante tras cerrar (buy/ext stale).
 - Aparición “lenta” (sin preview).
 - Menú avatar debajo de la mascota (z-index).
+- Expecto Patronum solo protegía si lo tenía el rival (ahora es global).
+- Capa de invisibilidad no ocultaba nada en el cliente (faltaban `flags` en el estado).
+- Reloj a 0 no terminaba la partida (faltaba claim de timeout en vivo).
 
 ---
 

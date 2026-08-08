@@ -17,6 +17,8 @@ type MatchBoardSnapshot = {
   cycle_index: number
   moves_in_phase: number
   at: number
+  result?: string | null
+  winner_id?: string | null
 }
 
 /**

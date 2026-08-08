@@ -20,7 +20,7 @@ type Props = {
   selected?: boolean
 }
 
-export function JokerCard({ joker, size = 140, className, onClick, disabled, selected }: Props) {
+export function JokerCard({ joker, size = 168, className, onClick, disabled, selected }: Props) {
   const [open, setOpen] = useState(false)
   const [pointer, setPointer] = useState({ x: 0, y: 0 })
   const cardRef = useRef<HTMLButtonElement>(null)
@@ -69,7 +69,7 @@ export function JokerCard({ joker, size = 140, className, onClick, disabled, sel
         onMouseLeave={() => setOpen(false)}
         onMouseMove={(e) => setPointer({ x: e.clientX, y: e.clientY })}
         className={cn(
-          'panel relative aspect-square overflow-hidden p-2 transition disabled:opacity-50',
+          'panel relative aspect-square overflow-hidden p-1.5 transition disabled:opacity-50',
           rarityRing,
           selected && 'ring-2 ring-[var(--color-primary)]',
           className,

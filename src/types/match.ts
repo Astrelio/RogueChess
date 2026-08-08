@@ -35,6 +35,8 @@ export type MatchPlayer = {
   giratiempo_active?: boolean
   giratiempo_moves_left?: number
   giratiempo_captures?: number
+  /** True si ya cerró la tienda y espera al rival. */
+  shop_ready?: boolean
 }
 
 export type ShopOffer = {
@@ -84,6 +86,9 @@ export type MatchRow = {
   expecto_patronum_active: boolean
   started_at: string | null
   finished_at: string | null
+  /** Inicio / fin del minuto de tienda (ISO). */
+  shop_opened_at?: string | null
+  shop_ends_at?: string | null
 }
 
 export type BoardCell = {
@@ -98,6 +103,18 @@ export type BoardCell = {
   is_active?: boolean
 }
 
+export type PieceFlag = {
+  piece_uid: string
+  color: 'white' | 'black'
+  kind: string
+  square: string | null
+  was_pawn?: boolean
+  is_invisible?: boolean
+  multijugos_queen?: boolean
+  multijugos_dies_ply?: number | null
+  payload?: Record<string, unknown>
+}
+
 export type MatchState = {
   match: MatchRow
   players: MatchPlayer[]
@@ -107,5 +124,7 @@ export type MatchState = {
   shop: ShopOffer[]
   spectators: unknown[]
   dimension_history: unknown[]
+  /** Marcadores de piezas (capa, multijugos, ex-peón…). */
+  flags?: PieceFlag[]
   you?: MatchPlayer | null
 }

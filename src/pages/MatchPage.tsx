@@ -14,14 +14,21 @@ import {
 } from '@/lib/jokerTargets'
 import { JokerCard } from '@/components/jokers/JokerCard'
 import { JokerTargetBanner } from '@/components/match/JokerTargetBanner'
-import { MatchPortalBridge } from '@/components/match/MatchPortalBridge'
-import { ShopPhaseModal } from '@/components/match/ShopPhaseModal'
+import { MatchPortalBridge, type MatchPortalPeerInfo } from '@/components/match/MatchPortalBridge'
+import { ShopPhaseModal, ShopWaitOverlay } from '@/components/match/ShopPhaseModal'
 import { VictoryOverlay } from '@/components/match/VictoryOverlay'
 import { PageTransition } from '@/components/PageTransition'
-import { portalReady, type MatchBoardSnapshot, type PieceDragPayload } from '@/lib/portal'
+import {
+  portalReady,
+  type MatchBoardSnapshot,
+  type MatchEmotePayload,
+  type PieceDragPayload,
+  type ShopReadyPayload,
+} from '@/lib/portal'
 import { previewAparicionFen, previewRemovePieceFen } from '@/lib/jokerOptimistic'
+import { fenHideEnemyInvisible } from '@/lib/invisibleFen'
 import { useLiveClocks } from '@/hooks/useLiveClocks'
-import type { MatchState, Joker, MatchPlayer } from '@/types/match'
+import type { MatchState, Joker, MatchPlayer, PieceFlag } from '@/types/match'
 
 /** Casillas estrictamente entre a y b (cliente; espejo de server/engine/board). */
 function pathBetweenClient(a: string, b: string): string[] {
@@ -84,39 +91,34 @@ export function MatchPage() {
   const publishBoardRef = useRef<
     ((next: MatchState, opts?: { preview?: boolean }) => Promise<void>) | null
   >(null)
+  const publishShopReadyRef = useRef<
+    | ((payload: {
+        matchId: string
+        uid: string
+        color: 'white' | 'black'
+        cycle_index: number
+      }) => Promise<void>)
+    | null
+  >(null)
+  const publishEmoteRef = useRef<
+    ((payload: { matchId: string; uid: string; emote: string }) => Promise<void>) | null
+  >(null)
+  const sendActivityRef = useRef<((kind: string) => void) | null>(null)
   const localDrag = useRef<{ from: string; piece: string } | null>(null)
   const [remoteDrag, setRemoteDrag] = useState<PieceDragPayload | null>(null)
   const [optimisticFen, setOptimisticFen] = useState<string | null>(null)
   const [aim, setAim] = useState<JokerAim | null>(null)
   const [justBoughtOfferId, setJustBoughtOfferId] = useState<string | null>(null)
   const [justBoughtInventoryId, setJustBoughtInventoryId] = useState<string | null>(null)
-  /** Ciclo cuya tienda el usuario ya cerró — evita reabrir por pulses/buy stale. */
-  const [dismissedShopCycle, setDismissedShopCycle] = useState<number | null>(null)
-  const dismissedShopCycleRef = useRef<number | null>(null)
+  const [shopPeek, setShopPeek] = useState(false)
+  const [peerInfo, setPeerInfo] = useState<MatchPortalPeerInfo | null>(null)
+  const [rivalEmote, setRivalEmote] = useState<string | null>(null)
+  const emoteTimer = useRef<number | null>(null)
   const [boardFx, setBoardFx] = useState<{
     squares: string[]
     kind: 'swap' | 'vanish'
   } | null>(null)
   const boardFxTimer = useRef<number | null>(null)
-
-  const forceActiveIfShopDismissed = useCallback((s: MatchState): MatchState => {
-    const dismissed = dismissedShopCycleRef.current
-    if (
-      dismissed == null ||
-      s.match.cycle_index !== dismissed ||
-      (s.match.status !== 'shop' && s.match.phase !== 'shop')
-    ) {
-      return s
-    }
-    return {
-      ...s,
-      match: {
-        ...s.match,
-        status: 'active',
-        phase: s.match.current_dimension || 'primo',
-      },
-    }
-  }, [])
 
   const flashBoardFx = useCallback((squares: string[], kind: 'swap' | 'vanish') => {
     if (boardFxTimer.current != null) window.clearTimeout(boardFxTimer.current)
@@ -129,14 +131,16 @@ export function MatchPage() {
 
   const applyState = useCallback(
     (s: MatchState, opts?: { publish?: boolean; resetClock?: boolean; reason?: string }) => {
-      const next = forceActiveIfShopDismissed(s)
-      setState(next)
+      setState(s)
       setOptimisticFen(null)
       setRemoteDrag(null)
+      if (s.match.status !== 'shop' && s.match.phase !== 'shop') {
+        setShopPeek(false)
+      }
       if (opts?.resetClock) turnStarted.current = Date.now()
-      if (opts?.publish !== false) void publishRef.current?.(next, opts?.reason)
+      if (opts?.publish !== false) void publishRef.current?.(s, opts?.reason)
     },
-    [forceActiveIfShopDismissed],
+    [],
   )
 
   const load = useCallback(async () => {
@@ -146,71 +150,95 @@ export function MatchPage() {
     applyState(s as MatchState, { publish: false, resetClock: true })
   }, [getToken, id, applyState])
 
+  const lastSyncAt = useRef(0)
+  const syncFromServer = useCallback(() => {
+    const now = Date.now()
+    if (now - lastSyncAt.current < 450) return
+    lastSyncAt.current = now
+    setRemoteDrag(null)
+    void load().catch(() => undefined)
+  }, [load])
+
   const onDirty = useCallback(
     (_reason: string) => {
-      setRemoteDrag(null)
-      void load().catch(() => undefined)
+      syncFromServer()
     },
-    [load],
+    [syncFromServer],
   )
 
-  const onBoardPulse = useCallback((board: MatchBoardSnapshot) => {
-    setRemoteDrag(null)
-    setState((prev) => {
-      if (!prev) return prev
-      // Preview optimista del rival: solo FEN (no reloj/turno — evita eco stale).
-      if (board.preview && board.fen) {
+  const onChannelReady = useCallback(() => {
+    // Reconexión Portal / late-join: Neon puede tener finished que perdimos al salir
+    syncFromServer()
+  }, [syncFromServer])
+
+  const onBoardPulse = useCallback(
+    (board: MatchBoardSnapshot) => {
+      setRemoteDrag(null)
+      setState((prev) => {
+        if (!prev) return prev
+        if (board.preview && board.fen) {
+          return {
+            ...prev,
+            match: { ...prev.match, fen: board.fen },
+          }
+        }
+
+        if (board.status === 'finished') {
+          return {
+            ...prev,
+            match: {
+              ...prev.match,
+              status: 'finished',
+              clock_running_for: null,
+              ...(board.fen ? { fen: board.fen } : {}),
+              ...(board.phase ? { phase: board.phase as MatchState['match']['phase'] } : {}),
+              ...(board.result !== undefined ? { result: board.result } : {}),
+              ...(board.winner_id !== undefined ? { winner_id: board.winner_id } : {}),
+            },
+          }
+        }
+
+        const nextRunning =
+          board.clock_running_for !== undefined
+            ? board.clock_running_for
+            : prev.match.clock_running_for
+
+        let fenPatch: Partial<MatchState['match']> = {}
+        if (board.fen) {
+          fenPatch = {
+            fen: board.fen,
+            cycle_index: board.cycle_index || prev.match.cycle_index,
+            moves_in_phase: board.moves_in_phase || prev.match.moves_in_phase,
+            status: board.status as MatchState['match']['status'],
+            phase: board.phase as MatchState['match']['phase'],
+          }
+        }
+
         return {
           ...prev,
-          match: { ...prev.match, fen: board.fen },
+          match: {
+            ...prev.match,
+            ...fenPatch,
+            white_time_ms: board.white_time_ms,
+            black_time_ms: board.black_time_ms,
+            turn_color: board.turn_color as MatchState['match']['turn_color'],
+            clock_running_for: nextRunning,
+            clock_updated_at: new Date(board.at || Date.now()).toISOString(),
+          },
         }
+      })
+
+      if (board.status === 'finished' && !board.preview) {
+        syncFromServer()
+        return
       }
-
-      const dismissed = dismissedShopCycleRef.current
-      const pulseWantsShop = board.status === 'shop' || board.phase === 'shop'
-      const blockShopReopen =
-        Boolean(board.fen) &&
-        pulseWantsShop &&
-        dismissed != null &&
-        (board.cycle_index === dismissed || prev.match.cycle_index === dismissed)
-
-      const nextRunning =
-        board.clock_running_for !== undefined
-          ? board.clock_running_for
-          : prev.match.clock_running_for
-
-      let fenPatch: Partial<MatchState['match']> = {}
-      if (board.fen) {
-        fenPatch = {
-          fen: board.fen,
-          cycle_index: board.cycle_index || prev.match.cycle_index,
-          moves_in_phase: board.moves_in_phase || prev.match.moves_in_phase,
-        }
-        if (!blockShopReopen) {
-          fenPatch.status = board.status as MatchState['match']['status']
-          fenPatch.phase = board.phase as MatchState['match']['phase']
-        }
-      }
-
-      return {
-        ...prev,
-        match: {
-          ...prev.match,
-          ...fenPatch,
-          white_time_ms: board.white_time_ms,
-          black_time_ms: board.black_time_ms,
-          turn_color: board.turn_color as MatchState['match']['turn_color'],
-          clock_running_for: nextRunning,
-          clock_updated_at: new Date(board.at || Date.now()).toISOString(),
-        },
-      }
-    })
-    if (board.fen && !board.preview) turnStarted.current = Date.now()
-  }, [])
+      if (board.fen && !board.preview) turnStarted.current = Date.now()
+    },
+    [syncFromServer],
+  )
 
   const onRemotePieceDrag = useCallback(
     (drag: PieceDragPayload) => {
-      // Ignorar eco de nuestro propio drag
       if (user?.uid && drag.uid && drag.uid === user.uid) return
       if (!drag.active) {
         setRemoteDrag(null)
@@ -220,6 +248,33 @@ export function MatchPage() {
     },
     [user?.uid],
   )
+
+  const onShopReadyPulse = useCallback((p: ShopReadyPayload) => {
+    if (user?.uid && p.uid === user.uid) return
+    setState((prev) => {
+      if (!prev || prev.match.cycle_index !== p.cycle_index) return prev
+      return {
+        ...prev,
+        players: prev.players.map((pl) =>
+          pl.color === p.color ? { ...pl, shop_ready: true } : pl,
+        ),
+      }
+    })
+  }, [user?.uid])
+
+  const onEmotePulse = useCallback((p: MatchEmotePayload) => {
+    if (user?.uid && p.uid === user.uid) return
+    if (emoteTimer.current != null) window.clearTimeout(emoteTimer.current)
+    setRivalEmote(p.emote)
+    emoteTimer.current = window.setTimeout(() => {
+      setRivalEmote(null)
+      emoteTimer.current = null
+    }, 2200)
+  }, [user?.uid])
+
+  const onPeerInfo = useCallback((info: MatchPortalPeerInfo) => {
+    setPeerInfo(info)
+  }, [])
 
   // Si el oponente suelta el drag y no llega el end, limpiar
   useEffect(() => {
@@ -233,21 +288,138 @@ export function MatchPage() {
     load().catch((err) => setError(err instanceof Error ? err.message : 'Error'))
   }, [ready, user, load])
 
+  useEffect(() => {
+    if (!ready || !user || !id) return
+    const onVis = () => {
+      if (document.visibilityState === 'visible') syncFromServer()
+    }
+    const onFocus = () => syncFromServer()
+    document.addEventListener('visibilitychange', onVis)
+    window.addEventListener('focus', onFocus)
+    window.addEventListener('pageshow', onFocus)
+    return () => {
+      document.removeEventListener('visibilitychange', onVis)
+      window.removeEventListener('focus', onFocus)
+      window.removeEventListener('pageshow', onFocus)
+    }
+  }, [ready, user, id, syncFromServer])
+
   const you = state?.you
   const match = state?.match
-  const isShop =
-    Boolean(match && (match.status === 'shop' || match.phase === 'shop')) &&
-    dismissedShopCycle !== match?.cycle_index
+  const inShopPhase = Boolean(match && (match.status === 'shop' || match.phase === 'shop'))
+  const youShopReady = Boolean(you?.shop_ready)
+  const isShop = inShopPhase && !youShopReady
+  const isShopWaiting = inShopPhase && youShopReady
+  const isWaitingRival = match?.status === 'waiting'
   const isFinished = match?.status === 'finished'
   const yourTurn = Boolean(you && match && match.status === 'active' && match.turn_color === you.color)
   const clocks = useLiveClocks(match, state?.players)
+  const timeoutClaimed = useRef(false)
+  const shopTimeoutClaimed = useRef(false)
+
+  // Reto: host espera a que el rival acepte (join)
+  useEffect(() => {
+    if (!isWaitingRival || !id) return
+    const t = window.setInterval(() => syncFromServer(), 1800)
+    return () => window.clearInterval(t)
+  }, [isWaitingRival, id, syncFromServer])
+
+  // Activity Portal: “shopping” mientras estás en el mercado
+  useEffect(() => {
+    if (!isShop) return
+    sendActivityRef.current?.('shopping')
+    const t = window.setInterval(() => sendActivityRef.current?.('shopping'), 4000)
+    return () => window.clearInterval(t)
+  }, [isShop])
+
+  const [shopLeftMs, setShopLeftMs] = useState(0)
+  useEffect(() => {
+    if (!inShopPhase || !match?.shop_ends_at) {
+      setShopLeftMs(0)
+      return
+    }
+    const ends = new Date(match.shop_ends_at).getTime()
+    const tick = () => setShopLeftMs(Math.max(0, ends - Date.now()))
+    tick()
+    const t = window.setInterval(tick, 200)
+    return () => window.clearInterval(t)
+  }, [inShopPhase, match?.shop_ends_at, match?.cycle_index])
+
+  // Flag: cuando un reloj vivo llega a 0, el server cierra la partida por tiempo
+  useEffect(() => {
+    if (!match || !id || isFinished || match.status !== 'active') {
+      timeoutClaimed.current = false
+      return
+    }
+    if (!clocks.runningFor) return
+    const flaggedOut =
+      (clocks.runningFor === 'white' && clocks.whiteMs <= 0) ||
+      (clocks.runningFor === 'black' && clocks.blackMs <= 0)
+    if (!flaggedOut || timeoutClaimed.current || busy) return
+    timeoutClaimed.current = true
+    void (async () => {
+      try {
+        const token = await getToken()
+        if (!token) return
+        const { state: s } = await api.claimTimeout(token, id)
+        applyState(s as MatchState, { reason: 'timeout' })
+      } catch {
+        timeoutClaimed.current = false
+        await load().catch(() => undefined)
+      }
+    })()
+  }, [
+    match,
+    id,
+    isFinished,
+    clocks.runningFor,
+    clocks.whiteMs,
+    clocks.blackMs,
+    busy,
+    getToken,
+    applyState,
+    load,
+  ])
+
+  // Minuto de tienda agotado → forzar cierre en Neon
+  useEffect(() => {
+    if (!inShopPhase || !id || isFinished) {
+      shopTimeoutClaimed.current = false
+      return
+    }
+    if (shopLeftMs > 0 || shopTimeoutClaimed.current || busy) return
+    if (!match?.shop_ends_at) return
+    shopTimeoutClaimed.current = true
+    void (async () => {
+      try {
+        const token = await getToken()
+        if (!token) return
+        const { state: s } = await api.claimShopTimeout(token, id)
+        applyState(s as MatchState, { resetClock: true, reason: 'shop_timeout' })
+      } catch {
+        shopTimeoutClaimed.current = false
+        await load().catch(() => undefined)
+      }
+    })()
+  }, [
+    inShopPhase,
+    id,
+    isFinished,
+    shopLeftMs,
+    busy,
+    match?.shop_ends_at,
+    getToken,
+    applyState,
+    load,
+  ])
 
   const displayFen = useMemo(() => {
     if (!match) return ''
     const base = optimisticFen ?? match.fen
-    if (!remoteDrag?.active || optimisticFen) return base
-    return fenWithDragPreview(base, { from: remoteDrag.from, hover: remoteDrag.hover })
-  }, [match, remoteDrag, optimisticFen])
+    const hidden = fenHideEnemyInvisible(base, state?.flags, you?.color)
+    if (!remoteDrag?.active || optimisticFen) return hidden
+    return fenWithDragPreview(hidden, { from: remoteDrag.from, hover: remoteDrag.hover })
+  }, [match, remoteDrag, optimisticFen, state?.flags, you?.color])
 
   const dragSquareStyles = useMemo(() => {
     const styles: Record<string, React.CSSProperties> = {}
@@ -384,12 +556,12 @@ export function MatchPage() {
   // Tienda / fin de partida / ítem consumido → salir del modo apuntado
   useEffect(() => {
     if (!aim) return
-    if (isShop || isFinished) {
+    if (inShopPhase || isFinished) {
       setAim(null)
       return
     }
     if (!yourInv.some((i) => i.id === aim.inventoryId)) setAim(null)
-  }, [aim, isShop, isFinished, yourInv])
+  }, [aim, inShopPhase, isFinished, yourInv])
 
   const bridge =
     portalReady && id ? (
@@ -399,9 +571,16 @@ export function MatchPage() {
         onDirty={onDirty}
         onBoardPulse={onBoardPulse}
         onPieceDrag={onRemotePieceDrag}
+        onShopReady={onShopReadyPulse}
+        onEmote={onEmotePulse}
+        onChannelReady={onChannelReady}
+        onPeerInfo={onPeerInfo}
         publishRef={publishRef}
         publishDragRef={publishDragRef}
         publishBoardRef={publishBoardRef}
+        publishShopReadyRef={publishShopReadyRef}
+        publishEmoteRef={publishEmoteRef}
+        sendActivityRef={sendActivityRef}
       />
     ) : null
 
@@ -709,6 +888,20 @@ export function MatchPage() {
             match: { ...next.match, expecto_patronum_active: true },
           }
         }
+        if (code === 'capa_invisibilidad' && typeof payload.square === 'string') {
+          const sq = payload.square
+          const flag: PieceFlag = {
+            piece_uid: `inv:${sq}:opt`,
+            color: you.color,
+            kind: '?',
+            square: sq,
+            is_invisible: true,
+          }
+          next = {
+            ...next,
+            flags: [...(next.flags || []).filter((f) => f.square !== sq), flag],
+          }
+        }
         return { ...next, players, you }
       })
     }
@@ -728,7 +921,7 @@ export function MatchPage() {
   }
 
   function beginJokerUse(inventoryId: string, joker: Joker) {
-    if (busy || isShop || isFinished) return
+    if (busy || inShopPhase || isFinished) return
     const mode = getJokerTargetMode(joker.code)
     if (!needsBoardTarget(joker.code)) {
       void castJoker(inventoryId, {})
@@ -758,32 +951,37 @@ export function MatchPage() {
   }
 
   async function closeShop() {
-    if (!match) return
+    if (!match || !you) return
     setBusy(true)
     setError(null)
-    const cycle = match.cycle_index
-    dismissedShopCycleRef.current = cycle
-    setDismissedShopCycle(cycle)
-    // Cierre optimista: el modal se va al instante
+    // Optimista: listo y modal de espera (la fase sigue en shop hasta el rival / timeout)
     setState((prev) => {
-      if (!prev) return prev
+      if (!prev?.you) return prev
       return {
         ...prev,
-        match: {
-          ...prev.match,
-          status: 'active',
-          phase: prev.match.current_dimension || 'primo',
-        },
+        you: { ...prev.you, shop_ready: true },
+        players: prev.players.map((p) =>
+          p.id === prev.you!.id ? { ...p, shop_ready: true } : p,
+        ),
       }
     })
     try {
       const token = await getToken()
       if (!token) return
       const { state: s } = await api.closeShop(token, id)
-      applyState(s as MatchState, { resetClock: true, reason: 'close_shop' })
+      if (user?.uid && you.color && s.match.status === 'shop') {
+        void publishShopReadyRef.current?.({
+          matchId: id,
+          uid: user.uid,
+          color: you.color,
+          cycle_index: match.cycle_index,
+        })
+      }
+      applyState(s as MatchState, {
+        resetClock: s.match.status === 'active',
+        reason: s.match.status === 'shop' ? 'shop_ready' : 'close_shop',
+      })
     } catch (err) {
-      dismissedShopCycleRef.current = null
-      setDismissedShopCycle(null)
       setError(err instanceof Error ? err.message : 'Error cerrando tienda')
       await load().catch(() => undefined)
     } finally {
@@ -848,6 +1046,7 @@ export function MatchPage() {
         open={isShop && !isFinished}
         cycleIndex={match.cycle_index}
         timeMs={yourTimeMs}
+        shopLeftMs={shopLeftMs || 60000}
         offers={yourShop}
         inventory={yourInv}
         inventorySlots={you?.inventory_slots ?? 3}
@@ -859,6 +1058,14 @@ export function MatchPage() {
         onSell={(inventoryId) => void sell(inventoryId)}
         onContinue={() => void closeShop()}
       />
+      <ShopWaitOverlay
+        open={isShopWaiting && !isFinished}
+        peek={shopPeek}
+        shopLeftMs={shopLeftMs}
+        rivalShopping={peerInfo?.shoppingActivity}
+        onPeek={() => setShopPeek(true)}
+        onBack={() => setShopPeek(false)}
+      />
       <VictoryOverlay
         open={isFinished}
         title={victoryTitle}
@@ -869,22 +1076,43 @@ export function MatchPage() {
         onRematch={() => void rematch()}
       />
       <div
-        className={`grid gap-8 lg:grid-cols-[minmax(0,1fr)_280px] ${isShop ? 'pointer-events-none select-none' : ''}`}
-        aria-hidden={isShop || undefined}
+        className={`grid gap-8 lg:grid-cols-[minmax(0,1fr)_280px] ${
+          isShop || (isShopWaiting && !shopPeek) ? 'pointer-events-none select-none' : ''
+        }`}
+        aria-hidden={isShop || (isShopWaiting && !shopPeek) || undefined}
       >
         <section>
           <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
             <div>
               <p className="font-label text-[10px] uppercase tracking-[0.16em] text-[var(--color-primary)]">
-                {match.mode === 'bot' ? 'Partida rápida · vs RogueBot' : 'Partida'}
+                {match.mode === 'bot'
+                  ? 'Partida rápida · vs RogueBot'
+                  : isWaitingRival
+                    ? 'Reto Portal · esperando rival'
+                    : 'Partida'}
               </p>
               <h1 className="font-display text-2xl text-[var(--color-ink)]">
-                {dimLabel[match.current_dimension] ?? match.current_dimension}
+                {isWaitingRival
+                  ? 'Esperando aceptación…'
+                  : dimLabel[match.current_dimension] ?? match.current_dimension}
               </h1>
               <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
-                Ciclo {match.cycle_index} · fase {match.phase} · movimientos {match.moves_in_phase}/
-                {match.moves_per_phase}
+                {isWaitingRival
+                  ? 'El rival debe pulsar Aceptar en el toast de Portal / inbox.'
+                  : `Ciclo ${match.cycle_index} · fase ${match.phase} · movimientos ${match.moves_in_phase}/${match.moves_per_phase}`}
               </p>
+              {peerInfo ? (
+                <p className="font-label mt-2 text-[10px] uppercase tracking-[0.14em] text-[var(--color-ink-muted)]">
+                  Portal · {peerInfo.status}
+                  {peerInfo.rivalOnline ? ' · rival en canal' : ' · solo tú'}
+                  {peerInfo.shoppingActivity ? ' · rival en tienda…' : ''}
+                </p>
+              ) : null}
+              {rivalEmote ? (
+                <p className="mt-2 text-2xl" aria-live="polite">
+                  {rivalEmote}
+                </p>
+              ) : null}
               {match.current_dimension === 'espejo' ? (
                 <p className="mt-2 max-w-md text-xs leading-relaxed text-[var(--color-primary)]">
                   Espejo activo: arrastra hacia un lado y la pieza va al contrario. Los peones van hacia
@@ -898,14 +1126,34 @@ export function MatchPage() {
                 </p>
               ) : null}
             </div>
-            <div className="flex gap-2">
-              {!isFinished ? (
-                <button type="button" onClick={() => void resign()} className="btn-ghost">
-                  Rendirse
-                </button>
-              ) : (
+            <div className="flex flex-wrap items-center gap-2">
+              {!isFinished && !isWaitingRival ? (
+                <>
+                  {['👍', '😮', '🔥', '♟️'].map((emote) => (
+                    <button
+                      key={emote}
+                      type="button"
+                      className="btn-ghost !px-2 !py-1 text-base"
+                      title="Emote Portal"
+                      onClick={() => {
+                        if (!user?.uid) return
+                        void publishEmoteRef.current?.({ matchId: id, uid: user.uid, emote })
+                      }}
+                    >
+                      {emote}
+                    </button>
+                  ))}
+                  <button type="button" onClick={() => void resign()} className="btn-ghost">
+                    Rendirse
+                  </button>
+                </>
+              ) : isFinished ? (
                 <button type="button" onClick={() => navigate('/')} className="btn-primary">
                   Salir
+                </button>
+              ) : (
+                <button type="button" onClick={() => navigate('/')} className="btn-ghost">
+                  Cancelar reto
                 </button>
               )}
             </div>
@@ -922,7 +1170,7 @@ export function MatchPage() {
             </span>
           </div>
 
-          <div className={`mx-auto max-w-[min(100%,520px)] ${isShop ? 'opacity-40 blur-[2px]' : ''}`}>
+          <div className={`mx-auto max-w-[min(100%,520px)] ${isShop || (isShopWaiting && !shopPeek) ? 'opacity-40 blur-[2px]' : ''}`}>
             {aim ? (
               <JokerTargetBanner
                 open
@@ -938,7 +1186,7 @@ export function MatchPage() {
                 position: displayFen,
                 boardOrientation: you?.color === 'black' ? 'black' : 'white',
                 allowDragging:
-                  yourTurn && !busy && !isShop && !isFinished && !optimisticFen && !aim,
+                  yourTurn && !busy && !inShopPhase && !isFinished && !optimisticFen && !aim,
                 animationDurationInMs: 280,
                 squareStyles: dragSquareStyles,
                 onSquareClick: ({ square }) => {
@@ -1005,11 +1253,11 @@ export function MatchPage() {
                   <JokerCard
                     key={item.id}
                     joker={item.joker as Joker}
-                    size={88}
-                    disabled={busy || isFinished || isShop}
+                    size={112}
+                    disabled={busy || isFinished || inShopPhase}
                     selected={aim?.inventoryId === item.id}
                     onClick={() => {
-                      if (isShop) return
+                      if (inShopPhase) return
                       if (aim?.inventoryId === item.id) {
                         setAim(null)
                         return
@@ -1024,21 +1272,25 @@ export function MatchPage() {
               ) : null}
             </div>
             <p className="mt-2 text-[11px] text-[var(--color-ink-muted)]">
-              {isShop
-                ? 'Negocia en el mercado'
+              {inShopPhase
+                ? isShopWaiting
+                  ? 'Esperando al rival — puedes mirar el tablero'
+                  : 'Negocia en el mercado'
                 : aim
                   ? 'Click en el tablero para apuntar · Esc cancela'
                   : 'Click = usar comodín (algunos piden casilla)'}
             </p>
           </div>
 
-          {!isShop ? (
+          {!inShopPhase ? (
             <div className="panel p-4 text-sm text-[var(--color-ink-muted)]">
               Tras {match.moves_per_phase} movimientos se abre el mercado. Ahora: {match.moves_in_phase}.
             </div>
           ) : (
             <div className="panel p-4 text-sm text-[var(--color-primary)]">
-              Mercado abierto — el tablero espera.
+              {isShopWaiting
+                ? `Esperando rival · ${Math.ceil(shopLeftMs / 1000)}s`
+                : `Mercado abierto · ${Math.ceil(shopLeftMs / 1000)}s`}
             </div>
           )}
 

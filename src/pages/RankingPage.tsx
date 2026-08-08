@@ -4,12 +4,14 @@ import { motion } from 'framer-motion'
 import { api } from '@/lib/api'
 import { useAuth } from '@/auth/AuthContext'
 import { PageTransition } from '@/components/PageTransition'
+import { useChallengePlayer } from '@/hooks/useChallengePlayer'
 import { cn, medalColor, presenceLabel } from '@/lib/utils'
 import { riseItem, stagger } from '@/lib/motion'
 import type { LeaderboardEntry } from '@/types'
 
 export function RankingPage() {
   const { getToken, user } = useAuth()
+  const challenge = useChallengePlayer()
   const [entries, setEntries] = useState<LeaderboardEntry[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -63,6 +65,11 @@ export function RankingPage() {
             {msg}
           </motion.p>
         ) : null}
+        {challenge.error ? (
+          <motion.p variants={riseItem} className="mt-3 text-sm text-[var(--color-error)]">
+            {challenge.error}
+          </motion.p>
+        ) : null}
         {error ? <p className="mt-4 text-sm text-[var(--color-error)]">{error}</p> : null}
         {loading ? (
           <p className="font-label mt-6 text-xs uppercase tracking-wider text-[var(--color-ink-muted)]">Cargando…</p>
@@ -102,15 +109,27 @@ export function RankingPage() {
                 </div>
               </div>
               {user ? (
-                <motion.button
-                  type="button"
-                  whileHover={{ y: -1 }}
-                  whileTap={{ scale: 0.97 }}
-                  onClick={() => void like(e.username)}
-                  className="font-label border border-[var(--color-outline-soft)] px-2.5 py-1 text-[10px] uppercase tracking-wider text-[var(--color-ink-muted)] transition hover:border-[var(--color-primary)] hover:text-[var(--color-primary)]"
-                >
-                  Super like
-                </motion.button>
+                <div className="flex flex-wrap gap-2">
+                  <motion.button
+                    type="button"
+                    whileHover={{ y: -1 }}
+                    whileTap={{ scale: 0.97 }}
+                    disabled={challenge.busy}
+                    onClick={() => void challenge.challengeUsername(e.username)}
+                    className="font-label border border-[var(--color-primary)]/40 px-2.5 py-1 text-[10px] uppercase tracking-wider text-[var(--color-primary)] transition hover:bg-[var(--color-primary)]/10 disabled:opacity-50"
+                  >
+                    Retar
+                  </motion.button>
+                  <motion.button
+                    type="button"
+                    whileHover={{ y: -1 }}
+                    whileTap={{ scale: 0.97 }}
+                    onClick={() => void like(e.username)}
+                    className="font-label border border-[var(--color-outline-soft)] px-2.5 py-1 text-[10px] uppercase tracking-wider text-[var(--color-ink-muted)] transition hover:border-[var(--color-primary)] hover:text-[var(--color-primary)]"
+                  >
+                    Super like
+                  </motion.button>
+                </div>
               ) : null}
             </motion.li>
           ))}
