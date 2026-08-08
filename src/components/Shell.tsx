@@ -1,22 +1,32 @@
-import { Link, NavLink, useLocation } from 'react-router-dom'
+import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
+import { useEffect, useId, useRef, useState } from 'react'
 import { useAuth } from '@/auth/AuthContext'
-import { cn, presenceLabel } from '@/lib/utils'
+import { api } from '@/lib/api'
+import { PortalLiveChrome } from '@/components/PortalLiveChrome'
+import { cn } from '@/lib/utils'
 import { pageFade, easeOut } from '@/lib/motion'
 
 export function Shell({ children }: { children: React.ReactNode }) {
-  const { profile, logout, user } = useAuth()
+  const { user } = useAuth()
   const location = useLocation()
+  const isLanding = location.pathname === '/'
 
   return (
-    <div className="parchment relative min-h-full overflow-x-hidden">
+    <div
+      className={cn(
+        'parchment relative overflow-x-hidden',
+        isLanding ? 'flex h-dvh max-h-dvh flex-col overflow-hidden' : 'min-h-full',
+      )}
+    >
+      <PortalLiveChrome />
       <motion.header
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.45, ease: easeOut }}
-        className="relative z-10 border-b hairline bg-[color-mix(in_srgb,var(--color-surface)_80%,transparent)] backdrop-blur-md"
+        className="relative z-40 shrink-0 border-b hairline bg-[color-mix(in_srgb,var(--color-surface)_80%,transparent)] backdrop-blur-md"
       >
-        <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-4 sm:px-8">
+        <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-3 sm:px-8">
           <Link to="/" className="group relative">
             <span className="font-display text-lg tracking-tight text-[var(--color-primary)] sm:text-xl">
               RogueChess
@@ -29,60 +39,18 @@ export function Shell({ children }: { children: React.ReactNode }) {
               transition={{ delay: 0.35, duration: 0.5, ease: easeOut }}
             />
           </Link>
-          <nav className="font-label flex flex-wrap items-center gap-4 text-xs uppercase tracking-[0.12em] sm:gap-6">
-            <NavItem to="/ranking">Ranking</NavItem>
-            <NavItem to="/devs">Devs</NavItem>
-            {user ? (
-              <>
-                <NavItem to="/perfil">Perfil</NavItem>
-                <motion.button
-                  type="button"
-                  whileHover={{ y: -1 }}
-                  whileTap={{ scale: 0.97 }}
-                  onClick={() => void logout()}
-                  className="text-[var(--color-ink-muted)] transition hover:text-[var(--color-ink)]"
-                >
-                  Salir
-                </motion.button>
-              </>
-            ) : (
-              <NavItem to="/login">Entrar</NavItem>
-            )}
-          </nav>
+          {user ? <UserMenu /> : <GuestMenu />}
         </div>
-        <AnimatePresence>
-          {profile ? (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              className="overflow-hidden"
-            >
-              <div className="mx-auto flex max-w-5xl items-center gap-2 px-4 pb-3 font-label text-[11px] uppercase tracking-wider text-[var(--color-ink-muted)] sm:px-8">
-                <span
-                  className={cn(
-                    'inline-block h-1.5 w-1.5 rounded-full',
-                    profile.presence === 'offline' ? 'bg-[var(--color-outline)]' : 'bg-[var(--color-online)]',
-                  )}
-                />
-                <span>@{profile.username}</span>
-                <span className="text-[var(--color-outline-soft)]">·</span>
-                <span>{presenceLabel(profile.presence)}</span>
-                {(profile.mood_emoji || profile.mood_text) && (
-                  <>
-                    <span className="text-[var(--color-outline-soft)]">·</span>
-                    <span className="normal-case tracking-normal text-[var(--color-ink)]">
-                      {profile.mood_emoji} {profile.mood_text}
-                    </span>
-                  </>
-                )}
-              </div>
-            </motion.div>
-          ) : null}
-        </AnimatePresence>
       </motion.header>
 
-      <main className="relative z-10 mx-auto max-w-5xl px-4 py-8 sm:px-8 sm:py-12">
+      <main
+        className={cn(
+          'relative z-10 mx-auto w-full max-w-5xl px-4 sm:px-8',
+          isLanding
+            ? 'flex min-h-0 flex-1 flex-col justify-center overflow-hidden py-3 sm:py-4'
+            : 'py-8 sm:py-12',
+        )}
+      >
         <AnimatePresence mode="wait">
           <motion.div
             key={location.pathname}
@@ -90,6 +58,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
             initial="initial"
             animate="animate"
             exit="exit"
+            className={isLanding ? 'flex min-h-0 flex-1 flex-col justify-center' : undefined}
           >
             {children}
           </motion.div>
@@ -99,27 +68,206 @@ export function Shell({ children }: { children: React.ReactNode }) {
   )
 }
 
-function NavItem({ to, children }: { to: string; children: React.ReactNode }) {
+function GuestMenu() {
   return (
-    <NavLink to={to} className="relative py-1">
-      {({ isActive }) => (
-        <motion.span
-          whileHover={{ y: -1 }}
-          className={cn(
-            'inline-block transition-colors',
+    <div className="font-label flex items-center gap-4 text-xs uppercase tracking-[0.12em]">
+      <NavLink
+        to="/ranking"
+        className={({ isActive }) =>
+          cn(
+            'transition-colors',
             isActive ? 'text-[var(--color-primary)]' : 'text-[var(--color-ink-muted)] hover:text-[var(--color-ink)]',
-          )}
-        >
-          {children}
-          {isActive ? (
-            <motion.span
-              layoutId="nav-active"
-              className="absolute inset-x-0 -bottom-0.5 h-px bg-[var(--color-primary-container)]"
-              transition={{ type: 'spring', stiffness: 380, damping: 30 }}
-            />
-          ) : null}
-        </motion.span>
-      )}
-    </NavLink>
+          )
+        }
+      >
+        Ranking
+      </NavLink>
+      <Link to="/login" className="btn-primary !px-4 !py-2 text-[10px]">
+        Entrar
+      </Link>
+    </div>
+  )
+}
+
+function UserMenu() {
+  const { profile, user, logout, getToken } = useAuth()
+  const navigate = useNavigate()
+  const location = useLocation()
+  const [open, setOpen] = useState(false)
+  const [busyPlay, setBusyPlay] = useState(false)
+  const rootRef = useRef<HTMLDivElement>(null)
+  const menuId = useId()
+
+  const avatarUrl = profile?.avatar_url || user?.photoURL || null
+  const initial = (profile?.username || profile?.display_name || user?.displayName || '?')
+    .trim()
+    .charAt(0)
+    .toUpperCase()
+
+  useEffect(() => {
+    if (!open) return
+    function onDoc(e: MouseEvent) {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false)
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('mousedown', onDoc)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDoc)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
+  useEffect(() => {
+    setOpen(false)
+  }, [location.pathname])
+
+  async function playQuick() {
+    setBusyPlay(true)
+    try {
+      const token = await getToken()
+      if (!token) {
+        navigate('/login')
+        return
+      }
+      const { match } = await api.startQuickMatch(token)
+      setOpen(false)
+      navigate(`/partida/${match.id}`)
+    } finally {
+      setBusyPlay(false)
+    }
+  }
+
+  return (
+    <div ref={rootRef} className="relative">
+      <motion.button
+        type="button"
+        whileHover={{ y: -1 }}
+        whileTap={{ scale: 0.96 }}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={menuId}
+        onClick={() => setOpen((v) => !v)}
+        className={cn(
+          'flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border transition',
+          open
+            ? 'border-[var(--color-primary)] ring-2 ring-[var(--color-primary-container)]/50'
+            : 'border-[var(--color-outline-soft)]/70 hover:border-[var(--color-primary)]/60',
+        )}
+      >
+        {avatarUrl ? (
+          <img src={avatarUrl} alt="" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+        ) : (
+          <span className="font-display text-sm text-[var(--color-primary)]">{initial}</span>
+        )}
+      </motion.button>
+
+      <AnimatePresence>
+        {open ? (
+          <motion.div
+            id={menuId}
+            role="menu"
+            initial={{ opacity: 0, y: -6, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -4, scale: 0.98 }}
+            transition={{ duration: 0.18, ease: easeOut }}
+            className="panel absolute right-0 top-[calc(100%+10px)] z-[60] w-56 overflow-hidden border-[var(--color-outline-soft)]/60 bg-[color-mix(in_srgb,#fff_88%,transparent)] p-0 shadow-[0_16px_40px_rgba(115,92,0,0.12)] backdrop-blur-md"
+          >
+            <div className="border-b hairline px-3 py-3">
+              <p className="font-display text-base text-[var(--color-primary)] truncate">
+                {profile?.display_name || user?.displayName || 'Jugador'}
+              </p>
+              <p className="font-label mt-1 text-[10px] uppercase tracking-[0.14em] text-[var(--color-ink-muted)] truncate">
+                @{profile?.username ?? '…'}
+              </p>
+            </div>
+            <ul className="font-label py-1 text-[11px] uppercase tracking-[0.14em]">
+              <MenuAction
+                disabled={busyPlay}
+                onClick={() => void playQuick()}
+              >
+                {busyPlay ? 'Emparejando…' : 'Jugar'}
+              </MenuAction>
+              <MenuLink to="/ranking" onNavigate={() => setOpen(false)}>
+                Ranking
+              </MenuLink>
+              <MenuLink to="/devs" onNavigate={() => setOpen(false)}>
+                Devs
+              </MenuLink>
+              <MenuLink to="/perfil" onNavigate={() => setOpen(false)}>
+                Perfil
+              </MenuLink>
+              <li>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="w-full px-3 py-2.5 text-left text-[var(--color-ink-muted)] transition hover:bg-[var(--color-surface-low)] hover:text-[var(--color-ink)]"
+                  onClick={() => {
+                    setOpen(false)
+                    void logout()
+                  }}
+                >
+                  Salir
+                </button>
+              </li>
+            </ul>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </div>
+  )
+}
+
+function MenuLink({
+  to,
+  children,
+  onNavigate,
+}: {
+  to: string
+  children: React.ReactNode
+  onNavigate: () => void
+}) {
+  return (
+    <li>
+      <NavLink
+        to={to}
+        role="menuitem"
+        onClick={onNavigate}
+        className={({ isActive }) =>
+          cn(
+            'block px-3 py-2.5 transition hover:bg-[var(--color-surface-low)]',
+            isActive ? 'text-[var(--color-primary)]' : 'text-[var(--color-ink-muted)] hover:text-[var(--color-ink)]',
+          )
+        }
+      >
+        {children}
+      </NavLink>
+    </li>
+  )
+}
+
+function MenuAction({
+  children,
+  onClick,
+  disabled,
+}: {
+  children: React.ReactNode
+  onClick: () => void
+  disabled?: boolean
+}) {
+  return (
+    <li>
+      <button
+        type="button"
+        role="menuitem"
+        disabled={disabled}
+        onClick={onClick}
+        className="w-full px-3 py-2.5 text-left text-[var(--color-primary)] transition hover:bg-[var(--color-surface-low)] disabled:opacity-50"
+      >
+        {children}
+      </button>
+    </li>
   )
 }

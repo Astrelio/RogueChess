@@ -1,69 +1,87 @@
+import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/auth/AuthContext'
+import { api } from '@/lib/api'
 import { PageTransition } from '@/components/PageTransition'
 import { easeOut, riseItem, stagger } from '@/lib/motion'
 
+const MASCOT_SRC = '/mascot/Bishop.png'
+
 export function LandingPage() {
-  const { user, ready } = useAuth()
+  const { user, ready, getToken } = useAuth()
+  const navigate = useNavigate()
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function playQuick() {
+    setBusy(true)
+    setError(null)
+    try {
+      const token = await getToken()
+      if (!token) {
+        navigate('/login')
+        return
+      }
+      const { match } = await api.startQuickMatch(token)
+      navigate(`/partida/${match.id}`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo crear la partida')
+    } finally {
+      setBusy(false)
+    }
+  }
 
   return (
-    <PageTransition>
-      <section className="relative flex min-h-[calc(100vh-9rem)] flex-col justify-center overflow-hidden py-6">
-        <motion.div
-          aria-hidden
-          className="pointer-events-none absolute -right-8 top-8 hidden h-72 w-72 sm:block"
-          initial={{ opacity: 0, rotate: -6 }}
-          animate={{ opacity: 1, rotate: 0 }}
-          transition={{ duration: 0.9, ease: easeOut }}
-        >
-          <div
-            className="h-full w-full rounded-sm border border-[var(--color-outline-soft)]/50"
-            style={{
-              backgroundImage:
-                'linear-gradient(45deg, transparent 46%, rgba(115,92,0,0.06) 46%, rgba(115,92,0,0.06) 54%, transparent 54%), linear-gradient(-45deg, transparent 46%, rgba(212,175,55,0.08) 46%, rgba(212,175,55,0.08) 54%, transparent 54%)',
-              backgroundSize: '36px 36px',
-            }}
-          />
+    <PageTransition className="flex min-h-0 flex-1 flex-col justify-center">
+      <section className="relative grid min-h-0 flex-1 items-center gap-4 overflow-hidden lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:gap-6">
+        <motion.div variants={stagger} initial="initial" animate="animate" className="relative z-10 max-w-xl">
           <motion.div
-            className="absolute inset-6 rounded-sm border border-[var(--color-primary)]/20"
-            animate={{ y: [0, -6, 0] }}
-            transition={{ duration: 5.5, repeat: Infinity, ease: 'easeInOut' }}
-          />
-        </motion.div>
-
-        <motion.div variants={stagger} initial="initial" animate="animate" className="relative max-w-xl">
-          <motion.p
             variants={riseItem}
-            className="font-label mb-4 text-xs uppercase tracking-[0.28em] text-[var(--color-primary)]"
+            className="mb-3 text-[var(--color-primary)] sm:mb-4"
+            aria-label="RogueChess"
           >
-            RogueChess
-          </motion.p>
+            <svg viewBox="0 0 24 24" width="38" height="38" fill="currentColor" aria-hidden>
+              {/* Rey ♔ */}
+              <path d="M11 2h2v2h2v2h-2v1.05A5.5 5.5 0 0 1 17.5 12.5V15h-2.5v-2.5a3 3 0 0 0-6 0V15H6.5v-2.5A5.5 5.5 0 0 1 11 7.05V6H9V4h2V2z" />
+              <path d="M7 16.5h10l.75 2.25H6.25L7 16.5z" />
+              <path d="M5.5 19.5h13V21.5h-13v-2z" />
+              <circle cx="12" cy="1.75" r="1.15" fill="var(--color-primary-container)" />
+            </svg>
+          </motion.div>
           <motion.h1
             variants={riseItem}
             className="font-display text-3xl leading-tight tracking-tight text-[var(--color-primary)] sm:text-5xl sm:leading-[1.15]"
           >
             El tablero cambia. El tiempo es tu moneda.
           </motion.h1>
-          <motion.p variants={riseItem} className="mt-5 max-w-md text-base leading-relaxed text-[var(--color-ink-muted)]">
+          <motion.p
+            variants={riseItem}
+            className="mt-4 max-w-md text-sm leading-relaxed text-[var(--color-ink-muted)] sm:mt-5 sm:text-base"
+          >
             Ajedrez rogue-like: dimensiones, comodines y relojes que sangran ventaja.
           </motion.p>
 
-          <motion.div variants={riseItem} className="mt-9 flex flex-wrap gap-3">
+          <motion.div variants={riseItem} className="mt-7 flex flex-wrap gap-3 sm:mt-9">
             {!ready ? (
               <span className="font-label text-xs uppercase tracking-wider text-[var(--color-ink-muted)]">
                 Cargando…
               </span>
             ) : user ? (
               <>
+                <motion.button
+                  type="button"
+                  disabled={busy}
+                  whileHover={{ y: -2 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => void playQuick()}
+                  className="btn-primary disabled:opacity-50"
+                >
+                  {busy ? 'Emparejando…' : 'Partida rápida'}
+                </motion.button>
                 <motion.div whileHover={{ y: -2 }} whileTap={{ scale: 0.98 }}>
-                  <Link to="/ranking" className="btn-primary inline-block">
-                    Ver ranking
-                  </Link>
-                </motion.div>
-                <motion.div whileHover={{ y: -2 }} whileTap={{ scale: 0.98 }}>
-                  <Link to="/perfil" className="btn-ghost inline-block">
-                    Mi perfil
+                  <Link to="/ranking" className="btn-ghost inline-block">
+                    Ranking
                   </Link>
                 </motion.div>
               </>
@@ -75,6 +93,26 @@ export function LandingPage() {
               </motion.div>
             )}
           </motion.div>
+          {error ? <p className="mt-4 text-sm text-[var(--color-error)]">{error}</p> : null}
+        </motion.div>
+
+        <motion.div
+          className="relative mx-auto flex h-full max-h-full w-full max-w-[420px] items-center justify-center lg:max-w-none lg:justify-end"
+          initial={{ opacity: 0, x: 28, scale: 0.96 }}
+          animate={{ opacity: 1, x: 0, scale: 1 }}
+          transition={{ duration: 0.85, ease: easeOut, delay: 0.12 }}
+        >
+          <motion.img
+            src={MASCOT_SRC}
+            alt="Mascota de RogueChess"
+            width={1024}
+            height={1024}
+            decoding="async"
+            draggable={false}
+            className="h-auto max-h-[min(240px,32dvh)] w-full max-w-[520px] select-none object-contain object-center sm:max-h-[min(420px,48dvh)] lg:max-h-[min(520px,58dvh)]"
+            animate={{ y: [0, -10, 0] }}
+            transition={{ duration: 5.8, repeat: Infinity, ease: 'easeInOut' }}
+          />
         </motion.div>
       </section>
     </PageTransition>

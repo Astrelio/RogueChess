@@ -1,0 +1,110 @@
+/**
+ * Modos de apuntado por código de comodín (alineado con Zod en /joker/use).
+ * Sin target → cast inmediato. Con targets → clicks en el tablero.
+ */
+
+export type TargetSlot =
+  | { key: 'square'; label: string; hint: string }
+  | { key: 'a'; label: string; hint: string }
+  | { key: 'b'; label: string; hint: string }
+  | { key: 'from'; label: string; hint: string }
+  | { key: 'to'; label: string; hint: string }
+
+export type JokerTargetMode = {
+  code: string
+  slots: TargetSlot[]
+  /** Cast inmediato (Tempus / flags); no pide casillas. */
+  instant: boolean
+}
+
+const INSTANT: JokerTargetMode = { code: '', slots: [], instant: true }
+
+const MODES: Record<string, JokerTargetMode> = {
+  axio_tempus: { ...INSTANT, code: 'axio_tempus' },
+  petrificus_totalus: { ...INSTANT, code: 'petrificus_totalus' },
+  arresto_momentum: { ...INSTANT, code: 'arresto_momentum' },
+  giratiempo: { ...INSTANT, code: 'giratiempo' },
+  expecto_patronum: { ...INSTANT, code: 'expecto_patronum' },
+  paso_fantasma: { ...INSTANT, code: 'paso_fantasma' },
+
+  aparicion: {
+    code: 'aparicion',
+    instant: false,
+    slots: [
+      { key: 'a', label: 'Primera pieza', hint: 'Elige una pieza tuya' },
+      { key: 'b', label: 'Segunda pieza', hint: 'Elige otra pieza tuya para intercambiar' },
+    ],
+  },
+  imperius: {
+    code: 'imperius',
+    instant: false,
+    slots: [
+      { key: 'from', label: 'Pieza enemiga', hint: 'Elige la pieza enemiga a controlar (no el rey)' },
+      { key: 'to', label: 'Destino', hint: 'Elige a dónde la mueves (fuego amigo permitido)' },
+    ],
+  },
+  avada_kedavra: {
+    code: 'avada_kedavra',
+    instant: false,
+    slots: [
+      {
+        key: 'square',
+        label: 'Víctima',
+        hint: 'Peón enemigo o pieza que fue peón (coronada / multijugos)',
+      },
+    ],
+  },
+  morsmordre: {
+    code: 'morsmordre',
+    instant: false,
+    slots: [
+      {
+        key: 'square',
+        label: 'Objetivo',
+        hint: 'Pieza enemiga adyacente a una tuya (no el rey)',
+      },
+    ],
+  },
+  bombarda: {
+    code: 'bombarda',
+    instant: false,
+    slots: [{ key: 'square', label: 'Peón', hint: 'Sacrifica uno de tus peones — explota 3×3' }],
+  },
+  defodio: {
+    code: 'defodio',
+    instant: false,
+    slots: [{ key: 'square', label: 'Trampa', hint: 'Casilla vacía para la trampa (1 turno)' }],
+  },
+  capa_invisibilidad: {
+    code: 'capa_invisibilidad',
+    instant: false,
+    slots: [{ key: 'square', label: 'Pieza', hint: 'Una pieza tuya se vuelve invisible' }],
+  },
+  pocion_multijugos: {
+    code: 'pocion_multijugos',
+    instant: false,
+    slots: [{ key: 'square', label: 'Peón', hint: 'Un peón tuyo actúa como dama 1 turno' }],
+  },
+}
+
+export function getJokerTargetMode(code: string): JokerTargetMode {
+  return MODES[code] ?? { code, slots: [], instant: true }
+}
+
+export function needsBoardTarget(code: string): boolean {
+  return !getJokerTargetMode(code).instant
+}
+
+/** Arma el payload Zod a partir de casillas elegidas en orden. */
+export function buildJokerPayload(
+  mode: JokerTargetMode,
+  squares: string[],
+): Record<string, string> | null {
+  if (mode.instant) return {}
+  if (squares.length < mode.slots.length) return null
+  const out: Record<string, string> = {}
+  mode.slots.forEach((slot, i) => {
+    out[slot.key] = squares[i]!
+  })
+  return out
+}

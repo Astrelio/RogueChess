@@ -5,6 +5,7 @@ import { authRouter } from './routes/auth.js'
 import { leaderboardRouter } from './routes/leaderboard.js'
 import { profilesRouter } from './routes/profiles.js'
 import { developersRouter } from './routes/developers.js'
+import { matchesRouter } from './routes/matches.js'
 import { requireAuth } from './middleware/auth.js'
 
 const app = express()
@@ -14,13 +15,14 @@ app.use(cors({ origin: true, credentials: true }))
 app.use(express.json({ limit: '1mb' }))
 
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, service: 'roguechess-api', phase: 1 })
+  res.json({ ok: true, service: 'roguechess-api', phase: 2 })
 })
 
 app.use('/api/auth', authRouter)
 app.use('/api/leaderboard', leaderboardRouter)
 app.use('/api/profiles', profilesRouter)
 app.use('/api/developers', developersRouter)
+app.use('/api/matches', matchesRouter)
 
 app.post('/api/presence/heartbeat', requireAuth, async (req, res, next) => {
   try {

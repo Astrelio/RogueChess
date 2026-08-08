@@ -334,7 +334,7 @@ CREATE TABLE IF NOT EXISTS shop_offers (
   match_id          UUID NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
   match_player_id   UUID NOT NULL REFERENCES match_players(id) ON DELETE CASCADE,
   cycle_index       INTEGER NOT NULL CHECK (cycle_index >= 0),
-  slot_index        SMALLINT NOT NULL CHECK (slot_index BETWEEN 0 AND 2),
+  slot_index        SMALLINT NOT NULL CHECK (slot_index BETWEEN 0 AND 3),
   joker_id          UUID NOT NULL REFERENCES jokers(id),
   cost_seconds      INTEGER NOT NULL CHECK (cost_seconds >= 0),
   purchased         BOOLEAN NOT NULL DEFAULT FALSE,
@@ -815,7 +815,12 @@ BEGIN
   SELECT * INTO v_to FROM profiles WHERE lower(username) = lower(trim(p_to_username));
   IF NOT FOUND THEN RETURN QUERY SELECT FALSE, 'target not found'::TEXT, NULL::UUID, NULL::INTEGER; RETURN; END IF;
   IF v_from.id = v_to.id THEN RETURN QUERY SELECT FALSE, 'cannot like yourself'::TEXT, NULL::UUID, NULL::INTEGER; RETURN; END IF;
-  IF EXISTS (SELECT 1 FROM super_likes WHERE from_profile_id = v_from.id AND to_profile_id = v_to.id AND liked_on = v_today) THEN
+  IF EXISTS (
+    SELECT 1 FROM super_likes sl
+    WHERE sl.from_profile_id = v_from.id
+      AND sl.to_profile_id = v_to.id
+      AND sl.liked_on = v_today
+  ) THEN
     RETURN QUERY SELECT FALSE, 'already liked today'::TEXT, v_to.id, v_to.popularity_score; RETURN;
   END IF;
   INSERT INTO super_likes (from_profile_id, to_profile_id, liked_on) VALUES (v_from.id, v_to.id, v_today);
@@ -917,7 +922,7 @@ RETURNS dimension_code LANGUAGE sql STABLE AS $$
   LIMIT 1;
 $$;
 
-CREATE OR REPLACE FUNCTION fn_pick_random_joker()
+CREATE OR REPLACE FUNCTION fn_pick_random_joker(p_exclude UUID[] DEFAULT '{}'::uuid[])
 RETURNS UUID LANGUAGE plpgsql AS $$
 DECLARE
   v_rarity joker_rarity;
@@ -937,8 +942,17 @@ BEGIN
 
   SELECT id INTO v_joker FROM jokers
   WHERE rarity = v_rarity AND is_active
+    AND NOT (id = ANY (COALESCE(p_exclude, '{}'::uuid[])))
   ORDER BY random() * shop_weight DESC
   LIMIT 1;
+
+  IF v_joker IS NULL THEN
+    SELECT id INTO v_joker FROM jokers
+    WHERE is_active
+      AND NOT (id = ANY (COALESCE(p_exclude, '{}'::uuid[])))
+    ORDER BY random() * shop_weight DESC
+    LIMIT 1;
+  END IF;
 
   IF v_joker IS NULL THEN
     SELECT id INTO v_joker FROM jokers
@@ -954,7 +968,7 @@ $$;
 CREATE OR REPLACE FUNCTION fn_pick_joker_for_faction(p_faction deck_faction)
 RETURNS UUID LANGUAGE plpgsql AS $$
 BEGIN
-  RETURN fn_pick_random_joker();
+  RETURN fn_pick_random_joker('{}'::uuid[]);
 END;
 $$;
 
@@ -1178,7 +1192,7 @@ BEGIN
 END;
 $$;
 
--- Generar 3 ofertas de tienda (pool global aleatorio)
+-- Generar 4 ofertas de tienda (pool global, sin duplicados)
 CREATE OR REPLACE FUNCTION fn_open_shop_for_player(p_match_player_id UUID)
 RETURNS SETOF shop_offers LANGUAGE plpgsql AS $$
 DECLARE
@@ -1186,6 +1200,7 @@ DECLARE
   v_match matches;
   v_joker UUID;
   v_cost INTEGER;
+  v_picked UUID[] := '{}'::uuid[];
   i INT;
 BEGIN
   SELECT * INTO v_mp FROM match_players WHERE id = p_match_player_id;
@@ -1195,8 +1210,9 @@ BEGIN
   UPDATE shop_offers SET expired = TRUE
   WHERE match_player_id = p_match_player_id AND cycle_index = v_match.cycle_index AND NOT purchased;
 
-  FOR i IN 0..2 LOOP
-    v_joker := fn_pick_random_joker();
+  FOR i IN 0..3 LOOP
+    v_joker := fn_pick_random_joker(v_picked);
+    v_picked := array_append(v_picked, v_joker);
     SELECT cost_seconds INTO v_cost FROM jokers WHERE id = v_joker;
     RETURN QUERY
     INSERT INTO shop_offers (match_id, match_player_id, cycle_index, slot_index, joker_id, cost_seconds)
@@ -1264,7 +1280,9 @@ BEGIN
   UPDATE shop_offers SET purchased = TRUE WHERE id = v_offer.id;
 
   INSERT INTO match_moves (match_id, ply, cycle_index, phase, dimension, kind, by_player_id, joker_id, inventory_id, payload)
-  SELECT p_match_id, COALESCE(MAX(ply), 0) + 1, m.cycle_index, 'shop', m.current_dimension, 'shop_buy', v_mp.id, v_offer.joker_id, v_item.id,
+  SELECT p_match_id,
+         (SELECT COALESCE(MAX(mm.ply), 0) + 1 FROM match_moves mm WHERE mm.match_id = p_match_id),
+         m.cycle_index, 'shop', m.current_dimension, 'shop_buy', v_mp.id, v_offer.joker_id, v_item.id,
          jsonb_build_object('cost_seconds', v_offer.cost_seconds)
   FROM matches m WHERE m.id = p_match_id;
 
@@ -1297,7 +1315,9 @@ BEGIN
   WHERE id = v_item.id RETURNING * INTO v_item;
 
   INSERT INTO match_moves (match_id, ply, cycle_index, phase, dimension, kind, by_player_id, joker_id, inventory_id, payload)
-  SELECT p_match_id, COALESCE(MAX(ply), 0) + 1, m.cycle_index, m.phase, m.current_dimension, 'shop_sell', v_mp.id, v_item.joker_id, v_item.id,
+  SELECT p_match_id,
+         (SELECT COALESCE(MAX(mm.ply), 0) + 1 FROM match_moves mm WHERE mm.match_id = p_match_id),
+         m.cycle_index, m.phase, m.current_dimension, 'shop_sell', v_mp.id, v_item.joker_id, v_item.id,
          jsonb_build_object('refund_seconds', v_item.purchased_cost_s)
   FROM matches m WHERE m.id = p_match_id;
 
@@ -1379,7 +1399,9 @@ BEGIN
   RETURNING * INTO v_effect;
 
   INSERT INTO match_moves (match_id, ply, cycle_index, phase, dimension, kind, by_player_id, joker_id, inventory_id, payload)
-  SELECT p_match_id, COALESCE(MAX(ply), 0) + 1, m.cycle_index, m.phase, m.current_dimension, 'joker_cast', v_mp.id, v_joker.id, v_item.id, p_payload
+  SELECT p_match_id,
+         (SELECT COALESCE(MAX(mm.ply), 0) + 1 FROM match_moves mm WHERE mm.match_id = p_match_id),
+         m.cycle_index, m.phase, m.current_dimension, 'joker_cast', v_mp.id, v_joker.id, v_item.id, p_payload
   FROM matches m WHERE m.id = p_match_id;
 
   RETURN v_effect;
@@ -1542,14 +1564,16 @@ BEGIN
     RETURN v_move;
   END IF;
 
-  -- Ruina: casilla de captura destruida
+  -- Ruina: casilla de captura destruida (reactivar si existía de un ciclo previo)
   IF p_is_capture AND v_match.current_dimension = 'ruina' THEN
     INSERT INTO match_board_cells (match_id, square, effect, created_cycle, is_active)
     VALUES (p_match_id, lower(p_to), 'ruined', v_match.cycle_index, TRUE)
-    ON CONFLICT DO NOTHING;
+    ON CONFLICT (match_id, square, effect) DO UPDATE
+      SET is_active = TRUE, created_cycle = EXCLUDED.created_cycle;
   END IF;
 
-  -- Giratiempo: segundo movimiento o corte por jaque
+  -- Giratiempo: segundo movimiento o corte por jaque.
+  -- Nota: la corrección del side-to-move del FEN está en patch_phase2_giratiempo.sql
   IF v_mp.giratiempo_active THEN
     IF p_is_check OR p_is_mate THEN
       UPDATE match_players SET giratiempo_active = FALSE, giratiempo_moves_left = 0 WHERE id = v_mp.id;

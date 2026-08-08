@@ -60,16 +60,17 @@ npm run dev:all
 - Web: http://localhost:5173  
 - API: http://localhost:8787  
 
-## Rutas Fase 1
+## Rutas Fase 1 + 2
 
 | Ruta | Qué hace |
 |---|---|
-| `/` | Landing sin scroll |
-| `/login` | Login / registro (email + Google) |
-| `/ranking` | Clasificación + super likes |
-| `/perfil` | Editar perfil y mood |
-| `/u/:username` | Perfil público |
-| `/devs` | Supercorazones a desarrolladores |
+| `/` | Landing + partida rápida |
+| `/login` | Login / registro |
+| `/ranking` | Clasificación |
+| `/perfil` | Perfil + mood |
+| `/partida/:id` | Tablero vs bot, tienda, grieta |
+| `/devs` | Supercorazones |
+
 
 ## API útil
 

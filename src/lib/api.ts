@@ -1,4 +1,5 @@
 import type { Developer, LeaderboardEntry, Profile } from '@/types'
+import type { MatchState, Joker } from '@/types/match'
 
 async function request<T>(
   path: string,
@@ -66,4 +67,47 @@ export const api = {
       token,
       body: JSON.stringify({ presence }),
     }),
+
+  startQuickMatch: (token: string) =>
+    request<{ match: { id: string }; state: MatchState }>('/api/matches/quick', { method: 'POST', token }),
+
+  getMatch: (token: string, id: string) =>
+    request<{ state: MatchState }>(`/api/matches/${id}`, { token }),
+
+  makeMove: (token: string, id: string, body: { from: string; to: string; promotion?: string; timeSpentMs?: number }) =>
+    request<{ state: MatchState }>(`/api/matches/${id}/move`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(body),
+    }),
+
+  buyJoker: (token: string, id: string, offerId: string) =>
+    request<{ state: MatchState }>(`/api/matches/${id}/shop/buy`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ offerId }),
+    }),
+
+  sellJoker: (token: string, id: string, inventoryId: string) =>
+    request<{ state: MatchState }>(`/api/matches/${id}/shop/sell`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ inventoryId }),
+    }),
+
+  useJoker: (token: string, id: string, inventoryId: string, payload?: Record<string, unknown>) =>
+    request<{ state: MatchState; events?: string[]; fizzled?: boolean }>(`/api/matches/${id}/joker/use`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ inventoryId, payload }),
+    }),
+
+  closeShop: (token: string, id: string) =>
+    request<{ state: MatchState }>(`/api/matches/${id}/shop/close`, { method: 'POST', token }),
+
+  resignMatch: (token: string, id: string) =>
+    request<{ state: MatchState }>(`/api/matches/${id}/resign`, { method: 'POST', token }),
+
+  jokersCatalog: () =>
+    request<{ jokers: Joker[] }>('/api/matches/catalog/jokers'),
 }
