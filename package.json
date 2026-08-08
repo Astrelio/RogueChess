@@ -24,7 +24,7 @@
     "db:patch:clocks": "node scripts/apply-sql.mjs db/patch_phase2_clocks.sql",
     "db:patch:matchmaking": "node scripts/apply-sql.mjs db/patch_matchmaking_queue.sql",
     "db:patch:shop-ready": "node scripts/apply-sql.mjs db/patch_shop_ready.sql",
-    "test": "tsx --test server/engine/engine.test.ts"
+    "test": "tsx --test server/engine/engine.test.ts src/lib/matchFreshness.test.ts"
   },
   "dependencies": {
     "@floating-ui/react": "^0.27.20",

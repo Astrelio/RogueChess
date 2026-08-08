@@ -58,6 +58,8 @@ export function useMatchRealtime({
 }: Args) {
   const channelId = portalReady && enabled && matchId ? matchChannelId(matchId) : undefined
   const skipOwn = useRef<Set<number>>(new Set())
+  /** Último `at` de board/dirty aplicado (ignora history/ecos desordenados). */
+  const lastSeenAt = useRef(0)
   const lastDragAt = useRef(0)
   const wasReady = useRef(false)
   const onDirtyRef = useRef(onDirty)
@@ -75,28 +77,43 @@ export function useMatchRealtime({
 
   const markOwnAt = useCallback((at: number) => {
     skipOwn.current.add(at)
-    // Evitar crecimiento infinito
+    lastSeenAt.current = Math.max(lastSeenAt.current, at)
     if (skipOwn.current.size > 40) {
       const sorted = [...skipOwn.current].sort((a, b) => a - b)
       for (const old of sorted.slice(0, sorted.length - 20)) skipOwn.current.delete(old)
     }
   }, [])
 
+  // Reset watermarks al cambiar de partida
+  useEffect(() => {
+    skipOwn.current.clear()
+    lastSeenAt.current = 0
+    wasReady.current = false
+  }, [channelId])
+
   const isOwnEcho = useCallback((at: number | undefined) => {
     return typeof at === 'number' && skipOwn.current.has(at)
+  }, [])
+
+  const acceptAt = useCallback((at: number | undefined) => {
+    if (typeof at !== 'number' || at <= 0) return true
+    if (at <= lastSeenAt.current) return false
+    lastSeenAt.current = at
+    return true
   }, [])
 
   const { send, status, presence, setMetadata, ext, me, activity, sendActivity } = useChannel<
     MatchChannelPayload | MatchBoardSnapshot
   >({
     channelId,
-    history: 12,
+    history: 4,
     metadata: metadata ?? { role: 'player', joinedAt: Date.now() },
     onMessage: (msg) => {
       if (msg.type === 'match.state.updated') {
         const board = msg.content as MatchBoardSnapshot
         if (!board?.fen && board?.status !== 'finished') return
         if (isOwnEcho(board.at)) return
+        if (!acceptAt(board.at)) return
         onBoardRef.current?.(board)
         if (board.status === 'finished') {
           onDirtyRef.current?.('match_over_ext')
@@ -124,12 +141,14 @@ export function useMatchRealtime({
 
       if (content.type === 'match_dirty') {
         if (isOwnEcho(content.at)) return
+        // dirty no avanza lastSeenAt (el board auth sí); solo evita ecos propios
         onDirtyRef.current?.(content.reason)
         return
       }
 
       if (content.type === 'match_over') {
         if (isOwnEcho(content.at)) return
+        if (!acceptAt(content.at)) return
         onBoardRef.current?.({
           matchId: content.matchId,
           fen: content.fen,
@@ -151,6 +170,15 @@ export function useMatchRealtime({
 
       if (content.type === 'match_board') {
         if (isOwnEcho(content.at)) return
+        // Previews: no pisan lastSeenAt ni se aplican si ya hay algo más nuevo
+        if (content.preview) {
+          if (typeof content.at === 'number' && content.at > 0 && content.at < lastSeenAt.current) {
+            return
+          }
+          onBoardRef.current?.(content)
+          return
+        }
+        if (!acceptAt(content.at)) return
         onBoardRef.current?.(content)
         if (content.status === 'finished') {
           onDirtyRef.current?.('match_over_board')
@@ -160,6 +188,10 @@ export function useMatchRealtime({
 
       if (content.type === 'match_clocks') {
         if (isOwnEcho(content.at)) return
+        // Relojes pueden compartir `at` con board del mismo publish → allowEqual
+        if (typeof content.at === 'number' && content.at > 0 && content.at < lastSeenAt.current) {
+          return
+        }
         onBoardRef.current?.({
           matchId: content.matchId,
           fen: '',
@@ -187,17 +219,16 @@ export function useMatchRealtime({
     }
     const snap = ext?.matchState as MatchBoardSnapshot | undefined
     if (snap?.fen || snap?.status === 'finished') {
-      if (!isOwnEcho(snap.at)) {
+      if (!isOwnEcho(snap.at) && acceptAt(snap.at)) {
         onBoardRef.current?.(snap)
         if (snap.status === 'finished') onDirtyRef.current?.('match_over_ext')
       }
     }
-    // Primera vez ready o reconexión tras caída
     if (!wasReady.current) {
       wasReady.current = true
       onReadyRef.current?.()
     }
-  }, [status, ext, isOwnEcho])
+  }, [status, ext, isOwnEcho, acceptAt])
 
   useEffect(() => {
     if (!metadata || !setMetadata) return

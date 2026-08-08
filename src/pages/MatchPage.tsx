@@ -27,6 +27,7 @@ import {
 } from '@/lib/portal'
 import { previewAparicionFen, previewRemovePieceFen } from '@/lib/jokerOptimistic'
 import { fenHideEnemyInvisible } from '@/lib/invisibleFen'
+import { isStaleBoardPulse, isStaleMatchState } from '@/lib/matchFreshness'
 import { useLiveClocks } from '@/hooks/useLiveClocks'
 import type { MatchState, Joker, MatchPlayer, PieceFlag } from '@/types/match'
 
@@ -137,8 +138,20 @@ export function MatchPage() {
     }, kind === 'swap' ? 600 : 480)
   }, [])
 
+  /** Watermarks anti-eco / anti-carrera Portal + REST. */
+  const lastBoardAtRef = useRef(0)
+  const lastClockAtRef = useRef(0)
+  const lastDragAtRef = useRef(0)
+  const stateRef = useRef<MatchState | null>(null)
+  const fetchGenRef = useRef(0)
+
   const applyState = useCallback(
     (s: MatchState, opts?: { publish?: boolean; resetClock?: boolean; reason?: string }) => {
+      // No aplicar REST viejo (poll/dirty atrasado) encima de un estado más nuevo
+      if (isStaleMatchState(s, stateRef.current)) return
+      stateRef.current = s
+      lastBoardAtRef.current = Math.max(lastBoardAtRef.current, Date.now())
+      lastClockAtRef.current = lastBoardAtRef.current
       setState(s)
       setOptimisticFen(null)
       setRemoteDrag(null)
@@ -154,14 +167,16 @@ export function MatchPage() {
   const load = useCallback(async () => {
     const token = await getToken()
     if (!token) return
+    const gen = ++fetchGenRef.current
     const { state: s } = await api.getMatch(token, id)
+    // Respuesta fuera de orden (poll lento / dirty duplicado)
+    if (gen !== fetchGenRef.current) return
     applyState(s as MatchState, { publish: false, resetClock: true })
   }, [getToken, id, applyState])
 
   const lastSyncAt = useRef(0)
   const syncFromServer = useCallback(() => {
     const now = Date.now()
-    // Más agresivo: 200ms (antes 450) para no “comerse” dirtys seguidos
     if (now - lastSyncAt.current < 200) return
     lastSyncAt.current = now
     setRemoteDrag(null)
@@ -176,30 +191,44 @@ export function MatchPage() {
   )
 
   const onChannelReady = useCallback(() => {
-    // Reconexión Portal / late-join: Neon puede tener finished que perdimos al salir
     syncFromServer()
   }, [syncFromServer])
 
   const onBoardPulse = useCallback(
     (board: MatchBoardSnapshot) => {
-      setRemoteDrag(null)
+      const current = stateRef.current
+      if (isStaleBoardPulse(board, current, lastBoardAtRef.current)) return
 
-      // Preview del rival: solo capa optimista (NUNCA pisa match.fen).
-      // Si no, un preview viejo (tu jugada sin la del bot/rival) revierte la pieza.
+      // Preview: solo capa optimista, y solo si no vamos atrás
       if (board.preview && board.fen) {
+        if (typeof board.at === 'number' && board.at > 0) {
+          // No subir lastBoardAt con preview (el auth real debe ganar siempre)
+        }
         setOptimisticFen(board.fen)
         return
       }
 
+      if (typeof board.at === 'number' && board.at > 0) {
+        if (board.fen || board.status === 'finished') {
+          lastBoardAtRef.current = Math.max(lastBoardAtRef.current, board.at)
+        } else {
+          // Solo relojes
+          if (board.at < lastClockAtRef.current) return
+          lastClockAtRef.current = board.at
+        }
+      }
+
+      setRemoteDrag(null)
       if (board.fen || board.status === 'finished') {
         setOptimisticFen(null)
       }
 
       setState((prev) => {
         if (!prev) return prev
+        if (isStaleBoardPulse(board, prev, 0)) return prev
 
         if (board.status === 'finished') {
-          return {
+          const next: MatchState = {
             ...prev,
             match: {
               ...prev.match,
@@ -211,11 +240,12 @@ export function MatchPage() {
               ...(board.winner_id !== undefined ? { winner_id: board.winner_id } : {}),
             },
           }
+          stateRef.current = next
+          return next
         }
 
-        // Relojes sin FEN (match_clocks): no tocar posición
         if (!board.fen) {
-          return {
+          const next: MatchState = {
             ...prev,
             match: {
               ...prev.match,
@@ -229,6 +259,8 @@ export function MatchPage() {
               clock_updated_at: new Date(board.at || Date.now()).toISOString(),
             },
           }
+          stateRef.current = next
+          return next
         }
 
         const nextRunning =
@@ -236,7 +268,7 @@ export function MatchPage() {
             ? board.clock_running_for
             : prev.match.clock_running_for
 
-        return {
+        const next: MatchState = {
           ...prev,
           match: {
             ...prev.match,
@@ -252,6 +284,8 @@ export function MatchPage() {
             clock_updated_at: new Date(board.at || Date.now()).toISOString(),
           },
         }
+        stateRef.current = next
+        return next
       })
 
       if (board.status === 'finished') {
@@ -266,6 +300,10 @@ export function MatchPage() {
   const onRemotePieceDrag = useCallback(
     (drag: PieceDragPayload) => {
       if (user?.uid && drag.uid && drag.uid === user.uid) return
+      if (typeof drag.at === 'number' && drag.at > 0 && drag.at < lastDragAtRef.current) return
+      if (typeof drag.at === 'number' && drag.at > 0) {
+        lastDragAtRef.current = drag.at
+      }
       if (!drag.active) {
         setRemoteDrag(null)
         return
@@ -275,18 +313,26 @@ export function MatchPage() {
     [user?.uid],
   )
 
-  const onShopReadyPulse = useCallback((p: ShopReadyPayload) => {
-    if (user?.uid && p.uid === user.uid) return
-    setState((prev) => {
-      if (!prev || prev.match.cycle_index !== p.cycle_index) return prev
-      return {
-        ...prev,
-        players: prev.players.map((pl) =>
-          pl.color === p.color ? { ...pl, shop_ready: true } : pl,
-        ),
-      }
-    })
-  }, [user?.uid])
+  const onShopReadyPulse = useCallback(
+    (p: ShopReadyPayload) => {
+      if (user?.uid && p.uid === user.uid) return
+      setState((prev) => {
+        if (!prev) return prev
+        // Ciclo viejo de tienda → ignorar
+        if (prev.match.cycle_index !== p.cycle_index) return prev
+        if (prev.match.status !== 'shop' && prev.match.phase !== 'shop') return prev
+        const next: MatchState = {
+          ...prev,
+          players: prev.players.map((pl) =>
+            pl.color === p.color ? { ...pl, shop_ready: true } : pl,
+          ),
+        }
+        stateRef.current = next
+        return next
+      })
+    },
+    [user?.uid],
+  )
 
   const onEmotePulse = useCallback((p: MatchEmotePayload) => {
     if (user?.uid && p.uid === user.uid) return
@@ -687,15 +733,8 @@ export function MatchPage() {
       return false
     }
 
-    // Optimista: la pieza queda en destino al instante (animación del board)
+    // Optimista LOCAL only — no publicar preview a Portal (ecos viejos reverían piezas)
     setOptimisticFen(previewFen)
-    if (state) {
-      const previewState: MatchState = {
-        ...state,
-        match: { ...state.match, fen: previewFen },
-      }
-      void publishBoardRef.current?.(previewState, { preview: true })
-    }
     setBusy(true)
     setError(null)
     const spent = Date.now() - turnStarted.current
@@ -871,13 +910,8 @@ export function MatchPage() {
       }
     }
     if (previewFen) {
+      // Solo local: el publish real sale con applyState tras el REST
       setOptimisticFen(previewFen)
-      if (state) {
-        void publishBoardRef.current?.(
-          { ...state, match: { ...state.match, fen: previewFen } },
-          { preview: true },
-        )
-      }
     }
 
     if (item && code) {
