@@ -57,7 +57,7 @@ export function useMatchRealtime({
   onChannelReady,
 }: Args) {
   const channelId = portalReady && enabled && matchId ? matchChannelId(matchId) : undefined
-  const skipOwn = useRef<number | null>(null)
+  const skipOwn = useRef<Set<number>>(new Set())
   const lastDragAt = useRef(0)
   const wasReady = useRef(false)
   const onDirtyRef = useRef(onDirty)
@@ -73,6 +73,19 @@ export function useMatchRealtime({
   onEmoteRef.current = onEmote
   onReadyRef.current = onChannelReady
 
+  const markOwnAt = useCallback((at: number) => {
+    skipOwn.current.add(at)
+    // Evitar crecimiento infinito
+    if (skipOwn.current.size > 40) {
+      const sorted = [...skipOwn.current].sort((a, b) => a - b)
+      for (const old of sorted.slice(0, sorted.length - 20)) skipOwn.current.delete(old)
+    }
+  }, [])
+
+  const isOwnEcho = useCallback((at: number | undefined) => {
+    return typeof at === 'number' && skipOwn.current.has(at)
+  }, [])
+
   const { send, status, presence, setMetadata, ext, me, activity, sendActivity } = useChannel<
     MatchChannelPayload | MatchBoardSnapshot
   >({
@@ -83,7 +96,7 @@ export function useMatchRealtime({
       if (msg.type === 'match.state.updated') {
         const board = msg.content as MatchBoardSnapshot
         if (!board?.fen && board?.status !== 'finished') return
-        if (skipOwn.current !== null && board.at === skipOwn.current) return
+        if (isOwnEcho(board.at)) return
         onBoardRef.current?.(board)
         if (board.status === 'finished') {
           onDirtyRef.current?.('match_over_ext')
@@ -110,13 +123,13 @@ export function useMatchRealtime({
       }
 
       if (content.type === 'match_dirty') {
-        if (skipOwn.current !== null && content.at === skipOwn.current) return
+        if (isOwnEcho(content.at)) return
         onDirtyRef.current?.(content.reason)
         return
       }
 
       if (content.type === 'match_over') {
-        if (skipOwn.current !== null && content.at === skipOwn.current) return
+        if (isOwnEcho(content.at)) return
         onBoardRef.current?.({
           matchId: content.matchId,
           fen: content.fen,
@@ -137,7 +150,7 @@ export function useMatchRealtime({
       }
 
       if (content.type === 'match_board') {
-        if (skipOwn.current !== null && content.at === skipOwn.current) return
+        if (isOwnEcho(content.at)) return
         onBoardRef.current?.(content)
         if (content.status === 'finished') {
           onDirtyRef.current?.('match_over_board')
@@ -146,7 +159,7 @@ export function useMatchRealtime({
       }
 
       if (content.type === 'match_clocks') {
-        if (skipOwn.current !== null && content.at === skipOwn.current) return
+        if (isOwnEcho(content.at)) return
         onBoardRef.current?.({
           matchId: content.matchId,
           fen: '',
@@ -174,7 +187,7 @@ export function useMatchRealtime({
     }
     const snap = ext?.matchState as MatchBoardSnapshot | undefined
     if (snap?.fen || snap?.status === 'finished') {
-      if (skipOwn.current === null || snap.at !== skipOwn.current) {
+      if (!isOwnEcho(snap.at)) {
         onBoardRef.current?.(snap)
         if (snap.status === 'finished') onDirtyRef.current?.('match_over_ext')
       }
@@ -184,7 +197,7 @@ export function useMatchRealtime({
       wasReady.current = true
       onReadyRef.current?.()
     }
-  }, [status, ext])
+  }, [status, ext, isOwnEcho])
 
   useEffect(() => {
     if (!metadata || !setMetadata) return
@@ -195,7 +208,7 @@ export function useMatchRealtime({
     async (state: MatchState, reason = 'update') => {
       if (!channelId) return
       const at = Date.now()
-      skipOwn.current = at
+      markOwnAt(at)
       const board = { ...boardFromState(state), at }
       const finished = state.match.status === 'finished'
 
@@ -239,14 +252,14 @@ export function useMatchRealtime({
 
       await Promise.all(sends)
     },
-    [channelId, send],
+    [channelId, send, markOwnAt],
   )
 
   const publishClocks = useCallback(
     async (state: MatchState) => {
       if (!channelId) return
       const at = Date.now()
-      skipOwn.current = at
+      markOwnAt(at)
       await send({
         ephemeral: true,
         content: {
@@ -260,7 +273,7 @@ export function useMatchRealtime({
         },
       })
     },
-    [channelId, send],
+    [channelId, send, markOwnAt],
   )
 
   /** Solo tablero ephemeral (p.ej. preview optimista) — sin dirty/refetch. */
@@ -268,7 +281,7 @@ export function useMatchRealtime({
     async (state: MatchState, opts?: { preview?: boolean }) => {
       if (!channelId) return
       const at = Date.now()
-      skipOwn.current = at
+      markOwnAt(at)
       const board = {
         ...boardFromState(state),
         at,
@@ -278,13 +291,15 @@ export function useMatchRealtime({
         ephemeral: true,
         content: { type: 'match_board', ...board },
       })
-      await send({
-        ephemeral: true,
-        type: 'match.state.sync',
-        content: board,
-      })
+      if (!opts?.preview) {
+        await send({
+          ephemeral: true,
+          type: 'match.state.sync',
+          content: board,
+        })
+      }
     },
-    [channelId, send],
+    [channelId, send, markOwnAt],
   )
 
   const publishPieceDrag = useCallback(

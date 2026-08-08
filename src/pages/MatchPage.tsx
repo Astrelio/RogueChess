@@ -183,17 +183,20 @@ export function MatchPage() {
   const onBoardPulse = useCallback(
     (board: MatchBoardSnapshot) => {
       setRemoteDrag(null)
-      if (!board.preview) {
+
+      // Preview del rival: solo capa optimista (NUNCA pisa match.fen).
+      // Si no, un preview viejo (tu jugada sin la del bot/rival) revierte la pieza.
+      if (board.preview && board.fen) {
+        setOptimisticFen(board.fen)
+        return
+      }
+
+      if (board.fen || board.status === 'finished') {
         setOptimisticFen(null)
       }
+
       setState((prev) => {
         if (!prev) return prev
-        if (board.preview && board.fen) {
-          return {
-            ...prev,
-            match: { ...prev.match, fen: board.fen },
-          }
-        }
 
         if (board.status === 'finished') {
           return {
@@ -210,27 +213,38 @@ export function MatchPage() {
           }
         }
 
+        // Relojes sin FEN (match_clocks): no tocar posición
+        if (!board.fen) {
+          return {
+            ...prev,
+            match: {
+              ...prev.match,
+              white_time_ms: board.white_time_ms,
+              black_time_ms: board.black_time_ms,
+              turn_color: board.turn_color as MatchState['match']['turn_color'],
+              clock_running_for:
+                board.clock_running_for !== undefined
+                  ? board.clock_running_for
+                  : prev.match.clock_running_for,
+              clock_updated_at: new Date(board.at || Date.now()).toISOString(),
+            },
+          }
+        }
+
         const nextRunning =
           board.clock_running_for !== undefined
             ? board.clock_running_for
             : prev.match.clock_running_for
 
-        let fenPatch: Partial<MatchState['match']> = {}
-        if (board.fen) {
-          fenPatch = {
+        return {
+          ...prev,
+          match: {
+            ...prev.match,
             fen: board.fen,
             cycle_index: board.cycle_index || prev.match.cycle_index,
             moves_in_phase: board.moves_in_phase || prev.match.moves_in_phase,
             status: (board.status || prev.match.status) as MatchState['match']['status'],
             phase: (board.phase || prev.match.phase) as MatchState['match']['phase'],
-          }
-        }
-
-        return {
-          ...prev,
-          match: {
-            ...prev.match,
-            ...fenPatch,
             white_time_ms: board.white_time_ms,
             black_time_ms: board.black_time_ms,
             turn_color: board.turn_color as MatchState['match']['turn_color'],
@@ -240,11 +254,11 @@ export function MatchPage() {
         }
       })
 
-      if (board.status === 'finished' && !board.preview) {
+      if (board.status === 'finished') {
         syncFromServer()
         return
       }
-      if (board.fen && !board.preview) turnStarted.current = Date.now()
+      if (board.fen) turnStarted.current = Date.now()
     },
     [syncFromServer],
   )
