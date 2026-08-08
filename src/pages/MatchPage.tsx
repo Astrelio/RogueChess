@@ -161,7 +161,8 @@ export function MatchPage() {
   const lastSyncAt = useRef(0)
   const syncFromServer = useCallback(() => {
     const now = Date.now()
-    if (now - lastSyncAt.current < 450) return
+    // Más agresivo: 200ms (antes 450) para no “comerse” dirtys seguidos
+    if (now - lastSyncAt.current < 200) return
     lastSyncAt.current = now
     setRemoteDrag(null)
     void load().catch(() => undefined)
@@ -182,6 +183,9 @@ export function MatchPage() {
   const onBoardPulse = useCallback(
     (board: MatchBoardSnapshot) => {
       setRemoteDrag(null)
+      if (!board.preview) {
+        setOptimisticFen(null)
+      }
       setState((prev) => {
         if (!prev) return prev
         if (board.preview && board.fen) {
@@ -217,8 +221,8 @@ export function MatchPage() {
             fen: board.fen,
             cycle_index: board.cycle_index || prev.match.cycle_index,
             moves_in_phase: board.moves_in_phase || prev.match.moves_in_phase,
-            status: board.status as MatchState['match']['status'],
-            phase: board.phase as MatchState['match']['phase'],
+            status: (board.status || prev.match.status) as MatchState['match']['status'],
+            phase: (board.phase || prev.match.phase) as MatchState['match']['phase'],
           }
         }
 
@@ -332,13 +336,13 @@ export function MatchPage() {
     return () => window.clearInterval(t)
   }, [isWaitingRival, id, syncFromServer])
 
-  // Si Portal no está ready (origen no registrado, 403, etc.), Neon poll
-  // para que el rival vea turnos sin depender del websocket.
+  // Si Portal no está ready → poll agresivo. Si está ready → poll suave
+  // por si el WS “parece” ok pero no entrega mensajes.
   useEffect(() => {
     if (!id || isFinished || isWaitingRival) return
     if (!match || (match.status !== 'active' && match.status !== 'shop')) return
-    if (peerInfo?.status === 'ready') return
-    const t = window.setInterval(() => syncFromServer(), 1500)
+    const ms = peerInfo?.status === 'ready' ? 7000 : 1200
+    const t = window.setInterval(() => syncFromServer(), ms)
     return () => window.clearInterval(t)
   }, [id, isFinished, isWaitingRival, match?.status, peerInfo?.status, syncFromServer])
 

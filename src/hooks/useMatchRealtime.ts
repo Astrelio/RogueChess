@@ -199,40 +199,45 @@ export function useMatchRealtime({
       const board = { ...boardFromState(state), at }
       const finished = state.match.status === 'finished'
 
-      await send({
-        content: {
-          type: 'match_dirty',
-          matchId: state.match.id,
-          reason: finished ? reason || 'match_over' : reason,
-          at,
-        },
-      })
-
-      if (finished) {
-        // Persistente: quien vuelva a la pestaña / late-join lo ve en history
-        await send({
+      // Tablero ephemeral PRIMERO / en paralelo: el rival ve FEN+turno sin
+      // esperar el RTT del dirty persistente (antes dirty bloqueaba el board).
+      const sends: Promise<unknown>[] = [
+        send({
+          ephemeral: true,
+          content: { type: 'match_board', ...board },
+        }),
+        send({
+          ephemeral: true,
+          type: 'match.state.sync',
+          content: board,
+        }),
+        send({
           content: {
-            type: 'match_over',
+            type: 'match_dirty',
             matchId: state.match.id,
-            status: 'finished',
-            result: state.match.result ?? null,
-            winner_id: state.match.winner_id ?? null,
-            fen: state.match.fen,
+            reason: finished ? reason || 'match_over' : reason,
             at,
           },
-        })
+        }),
+      ]
+
+      if (finished) {
+        sends.push(
+          send({
+            content: {
+              type: 'match_over',
+              matchId: state.match.id,
+              status: 'finished',
+              result: state.match.result ?? null,
+              winner_id: state.match.winner_id ?? null,
+              fen: state.match.fen,
+              at,
+            },
+          }),
+        )
       }
 
-      await send({
-        ephemeral: true,
-        content: { type: 'match_board', ...board },
-      })
-
-      await send({
-        ephemeral: true,
-        type: 'match.state.sync',
-        content: board,
-      })
+      await Promise.all(sends)
     },
     [channelId, send],
   )

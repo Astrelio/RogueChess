@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import type { MutableRefObject } from 'react'
 import { useMatchRealtime } from '@/hooks/useMatchRealtime'
 import { useAuth } from '@/auth/AuthContext'
@@ -67,6 +67,7 @@ export function MatchPortalBridge({
   sendActivityRef?: MutableRefObject<((kind: string) => void) | null>
 }) {
   const { profile, user } = useAuth()
+  const joinedAtRef = useRef(Date.now())
 
   const metadata = useMemo(
     () => ({
@@ -74,7 +75,7 @@ export function MatchPortalBridge({
       color: color ?? null,
       username: profile?.username,
       uid: user?.uid,
-      joinedAt: Date.now(),
+      joinedAt: joinedAtRef.current,
     }),
     [color, profile?.username, user?.uid],
   )

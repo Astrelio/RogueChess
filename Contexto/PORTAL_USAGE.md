@@ -34,9 +34,12 @@ Docs: https://docs.useportal.co/
 - **`match_over`** (persistente) → fin de partida (`result`, `winner_id`, fen); refetch + overlay victoria/derrota
 - **`match_board`** (ephemeral) → pulso FEN + `clock_running_for` + tiempos (≤2KB); `preview: true` = solo FEN (no reloj)
 - **`match_clocks`** (ephemeral) → tiempos + `clock_running_for`
+- Publish: **board + ext + dirty en paralelo** (antes dirty bloqueaba el board → lag del rival)
+- Metadata del canal match: `joinedAt` estable (evita “channel already created with different options”)
 - Reconexión / `visibilitychange`: refetch Neon para no perder el fin si saliste del navegador
 - Reloj en vivo: solo el lado de `clock_running_for`; Petrificus congela; Arresto ×2 visual
 - Tienda: 60s (`shop_ends_at`); `shop_ready` por jugador; wait UI + peek tablero; bot auto-ready
+- Safety poll: ~1.2s si Portal no ready; ~7s si ready (por si el WS no entrega)
 - Tienda: dismiss por `cycle_index` para no reabrir por buy/ext stale; modal de fase; cierre optimista
 - Comodines: preview FEN + destello (Aparición / Avada / Morsmordre) mientras llega REST
 - Fix buy (`ply` desde match_moves); fix superlike (`sl.to_profile_id`)
@@ -74,8 +77,8 @@ Docs: https://docs.useportal.co/
 ## Flujo jugada
 
 1. Cliente POST `/api/matches/:id/move` → Neon
-2. Respuesta → `publishState` en Portal
-3. Peers: ephemeral board inmediato + dirty → GET estado completo
+2. Respuesta → `publishState` en Portal (**board ephemeral + dirty + ext en paralelo**)
+3. Peers: FEN/turno inmediato vía `match_board`; inventarios vía dirty → GET Neon
 
 ## Pendiente doc final
 
