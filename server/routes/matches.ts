@@ -9,6 +9,7 @@ import {
   buildContext,
   listLegalMoves,
   type Color,
+  type MoveInput,
 } from '../engine/index.js'
 import { getMaxPly, getPieceFlags, persistEngineOps } from '../engine/persist.js'
 
@@ -284,13 +285,19 @@ const moveSchema = z.object({
   from: z.string().length(2),
   to: z.string().length(2),
   promotion: z.enum(['q', 'r', 'b', 'n']).optional(),
-  timeSpentMs: z.number().int().min(0).default(0),
+  timeSpentMs: z.number().int().min(0).optional(),
 })
 
 matchesRouter.post('/:id/move', requireAuth, async (req, res, next) => {
   try {
     const body = moveSchema.parse(req.body ?? {})
     const matchId = req.params.id
+    const moveInput: MoveInput = {
+      from: body.from,
+      to: body.to,
+      promotion: body.promotion,
+    }
+    const timeSpentMs = body.timeSpentMs ?? 0
 
     const state = await getState(matchId, req.user!.uid)
     if (!state) {
@@ -315,8 +322,8 @@ matchesRouter.post('/:id/move', requireAuth, async (req, res, next) => {
     }
 
     const ctx = await engineContextFor(matchId, state, you.color as Color)
-    const result = applyPlayerMove(ctx, body)
-    if (!result.ok) {
+    const result = applyPlayerMove(ctx, moveInput)
+    if (result.ok === false) {
       res.status(400).json({ error: result.error })
       return
     }
@@ -337,7 +344,7 @@ matchesRouter.post('/:id/move', requireAuth, async (req, res, next) => {
         ${result.isCapture},
         ${result.isCheck},
         ${result.isMate},
-        ${body.timeSpentMs},
+        ${timeSpentMs},
         ${JSON.stringify({ events: result.events, ghost: result.ghostUsed })}::jsonb
       )
     `
@@ -571,7 +578,7 @@ matchesRouter.post('/:id/joker/use', requireAuth, async (req, res, next) => {
 
     const ctx = await engineContextFor(matchId, state, you.color as Color)
     const result = applyJoker(ctx, code, payload)
-    if (!result.ok) {
+    if (result.ok === false) {
       res.status(400).json({ error: result.error })
       return
     }

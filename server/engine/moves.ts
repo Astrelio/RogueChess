@@ -274,9 +274,9 @@ export function applyPlayerMove(ctx: EngineContext, input: MoveInput): MoveResul
 
   if (chosen) {
     const boardCheck = checkMoveAgainstBoard(ctx, chosen)
-    if (!boardCheck.ok) return { ok: false, error: boardCheck.reason }
+    if (boardCheck.ok === false) return { ok: false, error: boardCheck.reason }
     const blood = bloodChainViolation(ctx, chosen, legalMoves)
-    if (!blood.ok) return { ok: false, error: blood.reason }
+    if (blood.ok === false) return { ok: false, error: blood.reason }
 
     const made = chess.move({
       from: chosen.from,
