@@ -21,6 +21,7 @@ import { MatchPortalBridge, type MatchPortalPeerInfo } from '@/components/match/
 import { ShopIntroOverlay } from '@/components/match/ShopIntroOverlay'
 import { ShopPhaseModal, ShopWaitOverlay } from '@/components/match/ShopPhaseModal'
 import { VictoryOverlay } from '@/components/match/VictoryOverlay'
+import { SpotifyMatchWidget } from '@/components/match/SpotifyMatchWidget'
 import { PageTransition } from '@/components/PageTransition'
 import {
   portalReady,
@@ -1578,40 +1579,45 @@ export function MatchPage() {
               </span>
             ) : null}
           </div>
-          <div className="flex items-center gap-1.5">
-            {!isFinished && !isWaitingRival ? (
-              <>
-                {['👍', '😮', '🔥', '♟️'].map((emote) => (
+          <div className="flex flex-col items-end gap-1.5">
+            <div className="flex items-center gap-1.5">
+              {!isFinished && !isWaitingRival ? (
+                <>
+                  {['👍', '😮', '🔥', '♟️'].map((emote) => (
+                    <button
+                      key={emote}
+                      type="button"
+                      className="btn-ghost !px-2 !py-1 text-sm"
+                      title="Emote Portal"
+                      onClick={() => {
+                        if (!user?.uid) return
+                        void publishEmoteRef.current?.({ matchId: id, uid: user.uid, emote })
+                      }}
+                    >
+                      {emote}
+                    </button>
+                  ))}
                   <button
-                    key={emote}
                     type="button"
-                    className="btn-ghost !px-2 !py-1 text-sm"
-                    title="Emote Portal"
-                    onClick={() => {
-                      if (!user?.uid) return
-                      void publishEmoteRef.current?.({ matchId: id, uid: user.uid, emote })
-                    }}
+                    onClick={() => void resign()}
+                    className="btn-ghost !px-3 !py-1 text-xs"
                   >
-                    {emote}
+                    Rendirse
                   </button>
-                ))}
-                <button
-                  type="button"
-                  onClick={() => void resign()}
-                  className="btn-ghost !px-3 !py-1 text-xs"
-                >
-                  Rendirse
+                </>
+              ) : isFinished ? (
+                <button type="button" onClick={() => navigate('/')} className="btn-primary !px-3 !py-1 text-xs">
+                  Salir
                 </button>
-              </>
-            ) : isFinished ? (
-              <button type="button" onClick={() => navigate('/')} className="btn-primary !px-3 !py-1 text-xs">
-                Salir
-              </button>
-            ) : (
-              <button type="button" onClick={() => navigate('/')} className="btn-ghost !px-3 !py-1 text-xs">
-                Cancelar reto
-              </button>
-            )}
+              ) : (
+                <button type="button" onClick={() => navigate('/')} className="btn-ghost !px-3 !py-1 text-xs">
+                  Cancelar reto
+                </button>
+              )}
+            </div>
+            {!isFinished && !isWaitingRival ? (
+              <SpotifyMatchWidget matchId={id} dimension={match.current_dimension} />
+            ) : null}
           </div>
         </div>
 

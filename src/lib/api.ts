@@ -160,4 +160,24 @@ export const api = {
 
   jokersCatalog: () =>
     request<{ jokers: Joker[] }>('/api/matches/catalog/jokers'),
+
+  spotifyStatus: () =>
+    request<{ configured: boolean }>('/api/spotify/status'),
+
+  spotifySearch: (token: string, q: string, limit = 8) =>
+    request<{ tracks: SpotifyTrack[] }>(
+      `/api/spotify/search?q=${encodeURIComponent(q)}&limit=${limit}`,
+      { token },
+    ),
+}
+
+export type SpotifyTrack = {
+  id: string
+  name: string
+  artists: string
+  album: string
+  imageUrl: string | null
+  uri: string
+  externalUrl: string
+  durationMs: number
 }
