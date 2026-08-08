@@ -1,0 +1,21 @@
+﻿{
+  "compilerOptions": {
+    "target": "ES2021",
+    "lib": ["ES2021"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "noEmit": true,
+    "strict": false,
+    "esModuleInterop": true,
+    "allowJs": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "types": ["node"]
+  },
+  "include": ["api/**/*.ts", "server/**/*.ts"],
+  "exclude": [
+    "server/**/*.test.ts",
+    "server/engine/engine.test.ts",
+    "server/index.ts"
+  ]
+}
