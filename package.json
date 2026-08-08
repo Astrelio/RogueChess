@@ -29,6 +29,7 @@
     "@portalsdk/core": "^0.1.5",
     "@portalsdk/extension-protocol": "^0.1.0",
     "@portalsdk/react": "^0.1.4",
+    "@vercel/node": "^5.9.7",
     "chess.js": "^1.4.0",
     "clsx": "^2.1.1",
     "cors": "^2.8.5",
