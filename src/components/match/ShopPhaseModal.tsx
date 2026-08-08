@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
+import { LOOP_PHASES } from '@/lib/dimensions'
 import { JokerCard } from '@/components/jokers/JokerCard'
 import { easeOut, riseItem, stagger } from '@/lib/motion'
 import type { MatchInventoryItem, ShopOffer } from '@/types/match'
@@ -113,13 +114,13 @@ export function ShopPhaseModal({
               <div className="relative flex flex-wrap items-end justify-between gap-4">
                 <div>
                   <p className="font-label text-[10px] uppercase tracking-[0.22em] text-[var(--color-primary)]">
-                    Fase de mercado · ciclo {cycleIndex}
+                    {LOOP_PHASES.shop.title} · ciclo {cycleIndex}
                   </p>
                   <h2 id="shop-title" className="font-display mt-1 text-3xl text-[var(--color-primary)] sm:text-4xl">
                     Mercado de comodines
                   </h2>
                   <p className="mt-2 max-w-md text-sm text-[var(--color-ink-muted)]">
-                    El tiempo es tu moneda. Cuatro ofertas — 1 minuto para comprar o cerrar.
+                    {LOOP_PHASES.shop.blurb} Tiempo es moneda — 1 minuto para comprar o cerrar.
                   </p>
                 </div>
                 <div className="flex gap-6 text-right">
