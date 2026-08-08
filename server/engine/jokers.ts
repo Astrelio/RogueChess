@@ -7,10 +7,10 @@ import {
   isSquare,
   pathBetween,
   ringsFrom,
-} from './board'
-import { blockedSquares } from './dimensions'
-import { cjs, colorInCheck } from './moves'
-import { emptyOps, type Color, type EngineContext, type EngineOps, type JokerResult } from './types'
+} from './board.js'
+import { blockedSquares } from './dimensions.js'
+import { cjs, colorInCheck } from './moves.js'
+import { emptyOps, type Color, type EngineContext, type EngineOps, type JokerResult } from './types.js'
 
 /** Códigos que aplica SQL (fn_consume_joker): el motor no toca tablero. */
 export const PASSIVE_CODES = new Set([
@@ -312,7 +312,7 @@ export function applyJoker(
       if (dest?.type === 'k') return fail('Imperius: no puedes capturar un rey')
 
       const geo = imperiusGeometry(ctx, chess, from, to, piece.type, otherColor(ctx.moverColor))
-      if (!geo.ok) return fail(`Imperius: ${geo.reason}`)
+      if (geo.ok === false) return fail(`Imperius: ${geo.reason}`)
 
       if (dest) {
         chess.remove(to as Square)

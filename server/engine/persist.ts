@@ -1,5 +1,5 @@
 import { sql } from '../db.js'
-import type { EngineOps } from './types'
+import type { EngineOps } from './types.js'
 
 /** MAX(ply) actual del match (0 si no hay filas). */
 export async function getMaxPly(matchId: string): Promise<number> {

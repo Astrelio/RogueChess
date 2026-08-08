@@ -1,10 +1,10 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { Chess } from 'chess.js'
-import { applyPlayerMove } from './moves'
-import { applyJoker } from './jokers'
-import { mirrorTarget } from './dimensions'
-import type { BoardCell, EngineContext, PieceFlag } from './types'
+import { applyPlayerMove } from './moves.js'
+import { applyJoker } from './jokers.js'
+import { mirrorTarget } from './dimensions.js'
+import type { BoardCell, EngineContext, PieceFlag } from './types.js'
 
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
 

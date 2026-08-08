@@ -1,6 +1,6 @@
 import type { Move } from 'chess.js'
-import { chebyshev, fileOf, pathBetween, rankOf, squareAt } from './board'
-import type { BoardCell, EngineContext } from './types'
+import { chebyshev, fileOf, pathBetween, rankOf, squareAt } from './board.js'
+import type { BoardCell, EngineContext } from './types.js'
 
 const SLIDERS = new Set(['q', 'r', 'b'])
 

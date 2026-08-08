@@ -1,7 +1,7 @@
-export { applyPlayerMove, listLegalMoves, botInputFor, colorInCheck, fenWithSideToMove } from './moves'
-export type { MoveInput } from './moves'
-export { applyJoker, PASSIVE_CODES, INSTANT_KINDS } from './jokers'
-export { buildContext } from './loadContext'
+export { applyPlayerMove, listLegalMoves, botInputFor, colorInCheck, fenWithSideToMove } from './moves.js'
+export type { MoveInput } from './moves.js'
+export { applyJoker, PASSIVE_CODES, INSTANT_KINDS } from './jokers.js'
+export { buildContext } from './loadContext.js'
 export type {
   EngineContext,
   EngineOps,
@@ -12,4 +12,4 @@ export type {
   EffectOp,
   ClockOp,
   Color,
-} from './types'
+} from './types.js'

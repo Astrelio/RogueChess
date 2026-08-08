@@ -1,13 +1,13 @@
 import { Chess, type Move, type PieceSymbol, type Square } from 'chess.js'
-import { pathBetween, chebyshev, fileOf, rankOf, squareAt } from './board'
+import { pathBetween, chebyshev, fileOf, rankOf, squareAt } from './board.js'
 import {
   activeCellMap,
   blockedSquares,
   bloodChainViolation,
   checkMoveAgainstBoard,
   mirrorCommand,
-} from './dimensions'
-import { emptyOps, type Color, type EngineContext, type MoveResult } from './types'
+} from './dimensions.js'
+import { emptyOps, type Color, type EngineContext, type MoveResult } from './types.js'
 
 const SLIDERS = new Set<PieceSymbol>(['q', 'r', 'b'])
 /** Mercado negro: bonus fijo por captura (GDD: "hasta 15s"). */
@@ -301,7 +301,7 @@ export function applyPlayerMove(ctx: EngineContext, input: MoveInput): MoveResul
   } else if (ctx.dimension === 'espejo' && movingPiece.type === 'p' && !input.skipMirror) {
     // Peón hacia el propio bando (chess.js no lo permite: movimiento forzado)
     const attempt = tryMirrorPawnMove(ctx, chess.fen(), from, to, promo)
-    if (!attempt.ok) return { ok: false, error: attempt.reason }
+    if (attempt.ok === false) return { ok: false, error: attempt.reason }
     chess = new Chess(attempt.fen)
     const afterPiece = chess.get(to as Square)
     const didPromo = Boolean(afterPiece && afterPiece.type !== 'p')
@@ -334,7 +334,7 @@ export function applyPlayerMove(ctx: EngineContext, input: MoveInput): MoveResul
       return { ok: false, error: why }
     }
     const attempt = tryGhostMove(ctx, chess.fen(), from, to, movingPiece.type)
-    if (!attempt.ok) return { ok: false, error: attempt.reason }
+    if (attempt.ok === false) return { ok: false, error: attempt.reason }
     chess = new Chess(attempt.fen)
     san = `${movingPiece.type.toUpperCase()}${from}-${to}†`
     uci = from + to

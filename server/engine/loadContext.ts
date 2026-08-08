@@ -4,7 +4,7 @@ import type {
   Color,
   EngineContext,
   PieceFlag,
-} from './types'
+} from './types.js'
 
 type Row = Record<string, unknown>
 
