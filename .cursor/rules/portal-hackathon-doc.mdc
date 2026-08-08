@@ -1,0 +1,25 @@
+---
+description: Hackathon — documentar uso de Portal (requisito)
+alwaysApply: true
+---
+
+# Portal · documento hackathon
+
+**Requisito:** antes de entregar la hackathon, crear (o completar) un documento que explique **todo lo que RogueChess usa de Portal y cómo**.
+
+## Cuándo
+
+Cuando el usuario pida el documento, o al cerrar trabajo de Portal / antes del pitch. No reinventar: basarse en lo implementado y en `Contexto/PORTAL_USAGE.md` (notas vivas).
+
+## Qué debe cubrir el doc final
+
+- Por qué Portal (realtime) vs Neon (persistencia) vs Firebase (auth)
+- Cliente: `@portalsdk/core` + `@portalsdk/react`, `PortalProvider`, anonymous vs JWT Firebase
+- Canales: `lobby:presence`, `match:{id}`, payloads, persistent vs ephemeral
+- Presence / metadata, inbox (`useInbox`), extensions (`matchState` + `channel.ext`)
+- `portal.config.ts` (auth JWKS Firebase, authz, notify) y `portal deploy`
+- Diagrama corto del flujo jugada → REST → publish → peers
+
+## Notas vivas
+
+Mantener `Contexto/PORTAL_USAGE.md` al día cuando se añada o cambie superficie de Portal.
