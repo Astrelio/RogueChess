@@ -6,6 +6,7 @@ import { useAuth } from '@/auth/AuthContext'
 import { api } from '@/lib/api'
 import { fenWithDragPreview } from '@/lib/dragPreview'
 import { mirrorCommand, applyMirrorPawnFen } from '@/lib/mirrorMove'
+import { applyGhostMoveFen } from '@/lib/ghostMove'
 import {
   buildJokerPayload,
   getJokerTargetMode,
@@ -25,7 +26,7 @@ import {
   type PieceDragPayload,
   type ShopReadyPayload,
 } from '@/lib/portal'
-import { previewAparicionFen, previewRemovePieceFen } from '@/lib/jokerOptimistic'
+import { previewAparicionFen, previewMorsmordreFen, previewRemovePieceFen } from '@/lib/jokerOptimistic'
 import { fenHideEnemyInvisible } from '@/lib/invisibleFen'
 import { isPhaseTransition, isStaleBoardPulse, isStaleMatchState } from '@/lib/matchFreshness'
 import { useLiveClocks } from '@/hooks/useLiveClocks'
@@ -566,10 +567,12 @@ export function MatchPage() {
           boxShadow: 'inset 0 0 0 2px rgba(212, 175, 55, 0.45)',
         }
       } else if (c.effect === 'trap_defodio') {
-        // Solo el dueño ve un leve matiz (el rival no debería saberlo del todo;
-        // en MVP ambos lo ven sutil para evitar softlocks de UI).
-        styles[sq] = {
-          backgroundColor: 'rgba(90, 40, 120, 0.18)',
+        // Solo el dueño ve la trampa; el rival no debe saber dónde está.
+        if (c.owner_player_id && c.owner_player_id === you?.id) {
+          styles[sq] = {
+            backgroundColor: 'rgba(90, 40, 120, 0.22)',
+            boxShadow: 'inset 0 0 0 1px rgba(90, 40, 120, 0.35)',
+          }
         }
       }
     }
@@ -602,7 +605,7 @@ export function MatchPage() {
       }
     }
     return Object.keys(styles).length ? styles : undefined
-  }, [remoteDrag, aim, state?.cells, boardFx])
+  }, [remoteDrag, aim, state?.cells, boardFx, you?.id])
 
   const blockedSquares = useMemo(() => {
     const set = new Set<string>()
@@ -712,15 +715,11 @@ export function MatchPage() {
     // Misma casilla: no es jugada, no llamar API
     if (sourceSquare === targetSquare) return false
 
-    if (blockedSquares.has(targetSquare)) {
-      setError('Esa casilla está quemada o en ruina — no puedes aterrizar ahí')
-      return false
-    }
-
     const chess = new Chess(fenWithSideToMove(match!.fen, match!.turn_color))
     const piece = chess.get(sourceSquare as 'a1')
     let dest = targetSquare
     // Preview alineado con el motor: en Espejo el comando se invierte por completo
+    // (NO validar quemado sobre la intención — solo sobre el destino efectivo)
     if (match!.current_dimension === 'espejo') {
       const mirrored = mirrorCommand(sourceSquare, targetSquare)
       if (!mirrored || mirrored === sourceSquare) {
@@ -728,10 +727,15 @@ export function MatchPage() {
         return false
       }
       dest = mirrored
-      if (blockedSquares.has(dest)) {
-        setError('Espejo: el destino efectivo está quemado o en ruina')
-        return false
-      }
+    }
+
+    if (blockedSquares.has(dest)) {
+      setError(
+        match!.current_dimension === 'espejo'
+          ? 'Espejo: el destino efectivo está quemado o en ruina'
+          : 'Esa casilla está quemada o en ruina — no puedes aterrizar ahí',
+      )
+      return false
     }
 
     // Trayectoria (no caballos): no cruzar quemadas
@@ -740,6 +744,56 @@ export function MatchPage() {
       if (path.some((sq) => blockedSquares.has(sq))) {
         setError('La trayectoria cruza una zona quemada o en ruina')
         return false
+      }
+    }
+
+    // Gravitacional: deslizantes ≤3
+    if (
+      match!.current_dimension === 'gravitacional' &&
+      piece &&
+      (piece.type === 'q' || piece.type === 'r' || piece.type === 'b')
+    ) {
+      const df = Math.abs(dest.charCodeAt(0) - sourceSquare.charCodeAt(0))
+      const dr = Math.abs(Number(dest[1]) - Number(sourceSquare[1]))
+      if (Math.max(df, dr) > 3) {
+        setError('Dimensión gravitacional: máximo 3 casillas')
+        return false
+      }
+    }
+
+    // Giratiempo: solo una captura
+    const youExt = you as MatchPlayer & {
+      giratiempo_active?: boolean
+      giratiempo_captures?: number
+    }
+    if (youExt?.giratiempo_active && (youExt.giratiempo_captures ?? 0) >= 1) {
+      const destPiece = chess.get(dest as 'a1')
+      if (destPiece && destPiece.color !== piece?.color) {
+        setError('Giratiempo: solo se permite una captura')
+        return false
+      }
+    }
+
+    // Cadena de sangre: si hay captura legal, obliga
+    if (match!.current_dimension === 'cadena_sangre') {
+      try {
+        const probe = new Chess(fenWithSideToMove(match!.fen, match!.turn_color))
+        const legal = probe.moves({ verbose: true }) as Array<{
+          from: string
+          to: string
+          captured?: string
+        }>
+        const captureExists = legal.some(
+          (m) => m.captured && !blockedSquares.has(m.to),
+        )
+        const destOcc = chess.get(dest as 'a1')
+        const thisCaptures = Boolean(destOcc && destOcc.color !== piece?.color)
+        if (captureExists && !thisCaptures) {
+          setError('Cadena de sangre: hay una captura disponible y es obligatoria')
+          return false
+        }
+      } catch {
+        /* ignore preview probe */
       }
     }
 
@@ -762,6 +816,26 @@ export function MatchPage() {
         sourceSquare,
         dest,
         you.color,
+        blockedSquares,
+      )
+    }
+    // Paso fantasma activo
+    const ghostActive = (state?.effects ?? []).some((e) => {
+      const row = e as { kind?: string; is_active?: boolean; applied_by?: string }
+      return (
+        row.is_active !== false &&
+        row.kind === 'ghost_step' &&
+        row.applied_by === you?.id
+      )
+    })
+    if (!previewFen && ghostActive && piece && you?.color) {
+      previewFen = applyGhostMoveFen(
+        fenWithSideToMove(match!.fen, match!.turn_color),
+        sourceSquare,
+        dest,
+        you.color,
+        blockedSquares,
+        match!.current_dimension === 'gravitacional',
       )
     }
     if (!previewFen) {
@@ -922,7 +996,7 @@ export function MatchPage() {
   }
 
   async function castJoker(inventoryId: string, payload: Record<string, unknown> = {}) {
-    if (!state?.you || busy) return
+    if (!state?.you || busy || !yourTurn) return
     const item = yourInv.find((i) => i.id === inventoryId)
     const code = item?.joker?.code
 
@@ -941,11 +1015,16 @@ export function MatchPage() {
           state.you.color,
         )
         if (previewFen) flashBoardFx([payload.a, payload.b], 'swap')
-      } else if (
-        (code === 'avada_kedavra' || code === 'morsmordre') &&
-        typeof payload.square === 'string'
-      ) {
+      } else if (code === 'avada_kedavra' && typeof payload.square === 'string') {
         previewFen = previewRemovePieceFen(state.match.fen, payload.square)
+        if (previewFen) flashBoardFx([payload.square], 'vanish')
+      } else if (code === 'morsmordre' && typeof payload.square === 'string') {
+        previewFen = previewMorsmordreFen(
+          state.match.fen,
+          payload.square,
+          state.you.color,
+          blockedSquares,
+        )
         if (previewFen) flashBoardFx([payload.square], 'vanish')
       }
     }
@@ -1041,8 +1120,12 @@ export function MatchPage() {
   }
 
   function beginJokerUse(inventoryId: string, joker: Joker) {
-    if (busy || inShopPhase || isFinished) return
+    if (busy || inShopPhase || isFinished || !yourTurn) return
     const mode = getJokerTargetMode(joker.code)
+    if (!mode) {
+      setError(`Comodín desconocido: ${joker.code}`)
+      return
+    }
     if (!needsBoardTarget(joker.code)) {
       void castJoker(inventoryId, {})
       return
@@ -1374,10 +1457,10 @@ export function MatchPage() {
                     key={item.id}
                     joker={item.joker as Joker}
                     size={112}
-                    disabled={busy || isFinished || inShopPhase}
+                    disabled={busy || isFinished || inShopPhase || !yourTurn}
                     selected={aim?.inventoryId === item.id}
                     onClick={() => {
-                      if (inShopPhase) return
+                      if (inShopPhase || !yourTurn) return
                       if (aim?.inventoryId === item.id) {
                         setAim(null)
                         return

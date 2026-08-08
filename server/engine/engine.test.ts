@@ -527,3 +527,83 @@ test('pocion_multijugos: peón a reina y colapso al siguiente turno', () => {
     assert.ok(move.events.some((e) => e.includes('multijugos')))
   }
 })
+
+test('gravitacional: jaque lejano no cuenta — se puede mover otra pieza', () => {
+  // Dama negra en a8 "jaquea" al rey en a1 a distancia 7; bajo gravedad no es jaque
+  const fen = 'q7/8/8/8/8/8/8/K6k w - - 0 1'
+  const ctx = makeCtx({ fen, dimension: 'gravitacional' })
+  const move = applyPlayerMove(ctx, { from: 'a1', to: 'b1' })
+  assert.equal(move.ok, true, 'el rey puede salir aunque chess.js vea jaque falso')
+})
+
+test('ruina: rayo de jaque a través de casilla destruida no cuenta', () => {
+  // Torre negra a8 → rey a1, pero a4 en ruina corta el rayo
+  const fen = 'r7/8/8/8/8/8/8/K6k w - - 0 1'
+  const ctx = makeCtx({
+    fen,
+    dimension: 'ruina',
+    cells: [cell({ square: 'a4', effect: 'ruined' })],
+  })
+  const move = applyPlayerMove(ctx, { from: 'a1', to: 'b2' })
+  assert.equal(move.ok, true)
+})
+
+test('morsmordre: no puede dejar al rey propio en jaque', () => {
+  // Alfil enemigo a5 → rey e1; caballo en c3 tapa la diagonal; peón b2 adyacente.
+  // Retroceso c3→c4 abre el jaque descubierto.
+  const fen = '7k/8/8/b7/8/2n5/1P6/4K3 w - - 0 1'
+  const r = applyJoker(makeCtx({ fen }), 'morsmordre', { square: 'c3' })
+  assert.equal(r.ok, false)
+  assert.match((r as { error: string }).error, /jaque/i)
+})
+
+test('morsmordre: fizzle si retroceso está quemado', () => {
+  const fen = '7k/8/8/8/8/4n3/4P3/4K3 w - - 0 1'
+  const r = applyJoker(
+    makeCtx({
+      fen,
+      cells: [cell({ square: 'e4', effect: 'burned' })],
+    }),
+    'morsmordre',
+    { square: 'e3' },
+  )
+  assert.equal(r.ok, true)
+  if (r.ok) {
+    assert.equal(r.fizzled, true)
+    assert.ok(r.events.some((e) => /quemada|ruina/i.test(e)))
+  }
+})
+
+test('ghost + cadena_sangre: no permite quieto si hay captura', () => {
+  const fen = '8/8/8/3p4/4P3/8/8/K6k w - - 0 1'
+  // Torre en a1 no hay — peón e4 puede capturar d5. Ghost en a-file no aplica.
+  // Usar torre blanca a4, peón negro a6 en el camino, destino a7 quieto, y captura disponible e4xd5
+  const fen2 = '8/8/p7/3p4/R3P3/8/8/K6k w - - 0 1'
+  const ctx = makeCtx({
+    fen: fen2,
+    dimension: 'cadena_sangre',
+    effects: [
+      {
+        id: 'g1',
+        kind: 'ghost_step',
+        is_active: true,
+        applied_by: 'p-me',
+        payload: {},
+      },
+    ],
+  })
+  const quietGhost = applyPlayerMove(ctx, { from: 'a4', to: 'a7' })
+  assert.equal(quietGhost.ok, false)
+  assert.match((quietGhost as { error: string }).error, /obligatoria|sangre/i)
+})
+
+test('listLegalMoves incluye escapes de jaque falso gravitacional', async () => {
+  const { listLegalMoves } = await import('./moves.js')
+  const fen = 'q7/8/8/8/8/8/8/K6k w - - 0 1'
+  const moves = listLegalMoves(makeCtx({ fen, dimension: 'gravitacional' }))
+  assert.ok(moves.length > 0, 'debe haber jugadas legales')
+  assert.ok(
+    moves.some((m) => m.from === 'a1'),
+    'el rey debe poder moverse',
+  )
+})

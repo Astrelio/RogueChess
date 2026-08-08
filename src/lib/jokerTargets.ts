@@ -87,12 +87,14 @@ const MODES: Record<string, JokerTargetMode> = {
   },
 }
 
-export function getJokerTargetMode(code: string): JokerTargetMode {
-  return MODES[code] ?? { code, slots: [], instant: true }
+export function getJokerTargetMode(code: string): JokerTargetMode | null {
+  return MODES[code] ?? null
 }
 
 export function needsBoardTarget(code: string): boolean {
-  return !getJokerTargetMode(code).instant
+  const mode = getJokerTargetMode(code)
+  if (!mode) return true
+  return !mode.instant
 }
 
 /** Arma el payload Zod a partir de casillas elegidas en orden. */

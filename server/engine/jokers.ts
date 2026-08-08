@@ -87,7 +87,7 @@ export function applyJoker(
       chess.put({ type: pb.type, color: pb.color }, a as Square)
       chess.put({ type: pa.type, color: pa.color }, b as Square)
       const fen = editedFen(chess)
-      if (colorInCheck(fen, ctx.moverColor)) {
+      if (colorInCheck(fen, ctx.moverColor, ctx)) {
         return fail('Aparición: el intercambio dejaría a tu rey en jaque')
       }
       // Los marcadores viajan con las piezas
@@ -148,6 +148,11 @@ export function applyJoker(
         ops.events.push('Morsmordre: el borde del tablero bloquea el retroceso — falla')
         return ok(ops, { fizzled: true })
       }
+      const blocked = blockedSquares(ctx)
+      if (blocked.has(back)) {
+        ops.events.push('Morsmordre: la casilla de retroceso está quemada o en ruina — falla')
+        return ok(ops, { fizzled: true })
+      }
       const occupant = chess.get(back as Square)
       if (occupant && occupant.color !== me) {
         ops.events.push('Morsmordre: una pieza de su propio equipo bloquea — falla')
@@ -170,7 +175,11 @@ export function applyJoker(
         if (f.square === square) ops.flagOps.push({ op: 'move', pieceUid: f.piece_uid, square: back })
       }
       ops.events.push(`Morsmordre: la pieza en ${square} retrocede a ${back}`)
-      return ok(ops, { newFen: editedFen(chess) })
+      const fen = editedFen(chess)
+      if (colorInCheck(fen, ctx.moverColor, ctx)) {
+        return fail('Morsmordre: el miedo dejaría a tu rey en jaque')
+      }
+      return ok(ops, { newFen: fen })
     }
 
     case 'bombarda': {
@@ -233,7 +242,7 @@ export function applyJoker(
             chess.put({ type, color }, cand as Square)
             const fenTry = editedFen(chess)
             const kingColor = color === 'w' ? 'white' : 'black'
-            const inCheck = colorInCheck(fenTry, kingColor)
+            const inCheck = colorInCheck(fenTry, kingColor, ctx)
             chess.remove(cand as Square)
             if (inCheck) continue
           }
@@ -277,7 +286,7 @@ export function applyJoker(
       }
 
       const fen = editedFen(chess)
-      if (colorInCheck(fen, ctx.moverColor)) {
+      if (colorInCheck(fen, ctx.moverColor, ctx)) {
         return fail('Bombarda: la explosión dejaría a tu rey en jaque')
       }
 
@@ -327,7 +336,7 @@ export function applyJoker(
         if (f.square === from) ops.flagOps.push({ op: 'move', pieceUid: f.piece_uid, square: to })
       }
       const fen = editedFen(chess)
-      if (colorInCheck(fen, ctx.moverColor)) {
+      if (colorInCheck(fen, ctx.moverColor, ctx)) {
         return fail('Imperius: esa jugada dejaría a tu propio rey en jaque')
       }
       ops.events.push(`Imperius: controlas la pieza enemiga ${from} → ${to}`)

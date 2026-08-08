@@ -7,6 +7,13 @@ function editedFen(chess: Chess): string {
   return parts.join(' ')
 }
 
+function backwardSquare(sq: string, color: 'white' | 'black'): string | null {
+  const file = sq.charCodeAt(0) - 97
+  const rank = Number(sq[1]) - 1 + (color === 'white' ? -1 : 1)
+  if (file < 0 || file > 7 || rank < 0 || rank > 7) return null
+  return String.fromCharCode(97 + file) + String(rank + 1)
+}
+
 /**
  * Preview local del intercambio Aparición (misma regla que el motor).
  * Devuelve null si el swap no es válido en cliente.
@@ -28,7 +35,7 @@ export function previewAparicionFen(
   const pa = chess.get(a as Square)
   const pb = chess.get(b as Square)
   if (!pa || pa.color !== me || !pb || pb.color !== me) return null
-  const backRank = (sq: string) => sq[1] === '1' || sq[1] === '8'
+  const backRank = (s: string) => s[1] === '1' || s[1] === '8'
   if ((pa.type === 'p' && backRank(b)) || (pb.type === 'p' && backRank(a))) return null
   chess.remove(a as Square)
   chess.remove(b as Square)
@@ -37,7 +44,7 @@ export function previewAparicionFen(
   return editedFen(chess)
 }
 
-/** Preview: quitar pieza en casilla (Avada / Morsmordre). */
+/** Preview: quitar pieza en casilla (Avada). */
 export function previewRemovePieceFen(fen: string, square: string): string | null {
   let chess: Chess
   try {
@@ -47,5 +54,36 @@ export function previewRemovePieceFen(fen: string, square: string): string | nul
   }
   if (!chess.get(square as Square)) return null
   chess.remove(square as Square)
+  return editedFen(chess)
+}
+
+/**
+ * Preview Morsmordre: la pieza enemiga retrocede (y puede aplastar una tuya).
+ */
+export function previewMorsmordreFen(
+  fen: string,
+  square: string,
+  moverColor: 'white' | 'black',
+  blocked: Set<string> = new Set(),
+): string | null {
+  let chess: Chess
+  try {
+    chess = new Chess(fen)
+  } catch {
+    return null
+  }
+  const me = moverColor === 'white' ? 'w' : 'b'
+  const target = chess.get(square as Square)
+  if (!target || target.color === me || target.type === 'k') return null
+  const targetColor: 'white' | 'black' = target.color === 'w' ? 'white' : 'black'
+  const back = backwardSquare(square, targetColor)
+  if (!back || (target.type === 'p' && (back[1] === '1' || back[1] === '8'))) return null
+  if (blocked.has(back)) return null
+  const occupant = chess.get(back as Square)
+  if (occupant && occupant.color !== me) return null
+  if (occupant?.type === 'k') return null
+  if (occupant && occupant.color === me) chess.remove(back as Square)
+  chess.remove(square as Square)
+  chess.put({ type: target.type, color: target.color }, back as Square)
   return editedFen(chess)
 }

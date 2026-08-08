@@ -1,8 +1,15 @@
 import { Chess, type Move, type PieceSymbol, type Square } from 'chess.js'
+import {
+  countAttackers,
+  fenAfterPseudoMove,
+  generatePseudoLegalMoves,
+  kingInCheck,
+} from './attacks.js'
 import { pathBetween, chebyshev, fileOf, rankOf, squareAt } from './board.js'
 import {
   activeCellMap,
   blockedSquares,
+  bloodChainRequiresCapture,
   bloodChainViolation,
   checkMoveAgainstBoard,
   mirrorCommand,
@@ -10,8 +17,8 @@ import {
 import { emptyOps, type Color, type EngineContext, type MoveResult } from './types.js'
 
 const SLIDERS = new Set<PieceSymbol>(['q', 'r', 'b'])
-/** Mercado negro: bonus fijo por captura (GDD: "hasta 15s"). */
-const MERCADO_CAPTURE_BONUS_MS = 5000
+/** Mercado negro: bonus por captura (GDD: hasta +15s). */
+const MERCADO_CAPTURE_BONUS_MS = 15_000
 /** Vida de una trampa Defodio en plies de match_moves (~1 turno rival). */
 const TRAP_TTL_PLIES = 2
 
@@ -35,8 +42,18 @@ function fenWithTurn(fen: string, turn: Color): string {
   return fenWithSideToMove(fen, turn)
 }
 
-/** ¿El rey de `color` está en jaque en esta posición (ignorando de quién es el turno)? */
-export function colorInCheck(fen: string, color: Color): boolean {
+/**
+ * ¿El rey de `color` está en jaque?
+ * Con `ctx`, respeta gravitacional (≤3) y zonas quemadas/ruina.
+ */
+export function colorInCheck(
+  fen: string,
+  color: Color,
+  ctx?: Pick<EngineContext, 'dimension' | 'cells'>,
+): boolean {
+  if (ctx && (ctx.dimension === 'gravitacional' || blockedSquares(ctx as EngineContext).size > 0)) {
+    return kingInCheck(fen, color, ctx)
+  }
   try {
     return new Chess(fenWithTurn(fen, color)).isCheck()
   } catch {
@@ -75,6 +92,10 @@ function forcedMoveFen(
   parts[1] = cjs(otherColor(mover))
   if (piece.type === 'k' || piece.type === 'r') {
     parts[2] = stripCastling(parts[2], from)
+  }
+  // Captura de torre en casilla de enroque: limpiar derecho correspondiente
+  if (to === 'a1' || to === 'h1' || to === 'a8' || to === 'h8') {
+    parts[2] = stripCastling(parts[2], to)
   }
   parts[3] = '-'
   parts[4] = '0'
@@ -143,7 +164,7 @@ function tryGhostMove(
   }
 
   const nextFen = forcedMoveFen(chess, from, to, ctx.moverColor, undefined)
-  if (colorInCheck(nextFen, ctx.moverColor)) {
+  if (colorInCheck(nextFen, ctx.moverColor, ctx)) {
     return { ok: false, reason: 'Ese movimiento dejaría a tu rey en jaque' }
   }
   return { ok: true, captured: Boolean(target), fen: nextFen }
@@ -197,7 +218,7 @@ function tryMirrorPawnMove(
   }
 
   const nextFen = forcedMoveFen(chess, from, to, ctx.moverColor, promo)
-  if (colorInCheck(nextFen, ctx.moverColor)) {
+  if (colorInCheck(nextFen, ctx.moverColor, ctx)) {
     return { ok: false, reason: 'Espejo: ese movimiento dejaría a tu rey en jaque' }
   }
   return { ok: true, captured: Boolean(isCapture), fen: nextFen }
@@ -212,6 +233,67 @@ export type MoveInput = {
    * casillero real). Usado por el bot, que elige jugadas legales de chess.js.
    */
   skipMirror?: boolean
+}
+
+type Rescue =
+  | { ok: true; fen: string; san: string; uci: string; captured: boolean }
+  | { ok: false; error: string }
+
+/**
+ * Acepta una jugada que chess.js marcó ilegal por jaque/pin falso
+ * (deslizante >3 en gravitacional, o rayo a través de ruina/quemado).
+ */
+function tryRescueVariantMove(
+  ctx: EngineContext,
+  fen: string,
+  from: string,
+  to: string,
+  promo: PieceSymbol | undefined,
+  legalMoves: Move[],
+): Rescue {
+  const needs =
+    ctx.dimension === 'gravitacional' || blockedSquares(ctx).size > 0
+  if (!needs) return { ok: false, error: 'Movimiento ilegal' }
+
+  const blood = bloodChainRequiresCapture(ctx, legalMoves)
+  if (blood.ok === false) return { ok: false, error: blood.reason }
+
+  const candidates = generatePseudoLegalMoves(fen, ctx.moverColor).filter(
+    (m) => m.from === from && m.to === to && (!promo || m.promotion === promo || !m.promotion),
+  )
+  const pick =
+    candidates.find((m) => promo && m.promotion === promo) ??
+    candidates.find((m) => m.promotion === 'q') ??
+    candidates[0]
+  if (!pick) return { ok: false, error: 'Movimiento ilegal' }
+
+  const asMove = {
+    from: pick.from,
+    to: pick.to,
+    piece: pick.piece,
+    captured: pick.captured,
+    promotion: pick.promotion,
+  } as Move
+  const board = checkMoveAgainstBoard(ctx, asMove)
+  if (board.ok === false) return { ok: false, error: board.reason }
+  if (ctx.giratiempoActive && pick.captured && ctx.giratiempoCaptures >= 1) {
+    return { ok: false, error: 'Giratiempo: solo se permite una captura' }
+  }
+
+  const nextFen = fenAfterPseudoMove(fen, pick, ctx.moverColor)
+  if (!nextFen) return { ok: false, error: 'Movimiento ilegal' }
+  if (colorInCheck(nextFen, ctx.moverColor, ctx)) {
+    return { ok: false, error: 'Ese movimiento dejaría a tu rey en jaque' }
+  }
+
+  const san = `${pick.piece.toUpperCase()}${pick.from}-${pick.to}${pick.promotion ? '=' + pick.promotion.toUpperCase() : ''}◇`
+  return {
+    ok: true,
+    fen: nextFen,
+    san,
+    uci: pick.from + pick.to + (pick.promotion ?? ''),
+    captured: Boolean(pick.captured),
+  }
 }
 
 /**
@@ -242,6 +324,27 @@ export function applyPlayerMove(ctx: EngineContext, input: MoveInput): MoveResul
       ops.events.push(`Poción multijugos: la reina en ${f.square} colapsa y muere`)
     }
     ops.flagOps.push({ op: 'remove', pieceUid: f.piece_uid })
+  }
+
+  // Multijugos ya colapsó arriba. Monolitos bajo piezas: absorben al dueño (GDD spawn).
+  const absorbedMonolithIds = new Set<string>()
+  {
+    const cellMapEarly = activeCellMap(ctx)
+    for (const [sq, cell] of cellMapEarly) {
+      if (cell.effect !== 'monolith') continue
+      const occ = chess.get(sq as Square)
+      if (!occ) continue
+      const owner: Color = occ.color === 'w' ? 'white' : 'black'
+      const min = cell.time_bonus_min_s ?? 40
+      const max = cell.time_bonus_max_s ?? 60
+      const bonusMs = (min + Math.floor(Math.random() * (max - min + 1))) * 1000
+      ops.clockOps.push({ color: owner, deltaMs: bonusMs, reason: 'monolith_spawn' })
+      ops.cellOps.push({ op: 'deactivate', id: cell.id })
+      absorbedMonolithIds.add(cell.id)
+      ops.events.push(
+        `Monolito en ${sq}: nace sobre pieza — +${bonusMs / 1000}s al reloj ${owner === 'white' ? 'blancas' : 'negras'}`,
+      )
+    }
   }
 
   const from = input.from
@@ -277,6 +380,9 @@ export function applyPlayerMove(ctx: EngineContext, input: MoveInput): MoveResul
     if (boardCheck.ok === false) return { ok: false, error: boardCheck.reason }
     const blood = bloodChainViolation(ctx, chosen, legalMoves)
     if (blood.ok === false) return { ok: false, error: blood.reason }
+    if (ctx.giratiempoActive && chosen.captured && ctx.giratiempoCaptures >= 1) {
+      return { ok: false, error: 'Giratiempo: solo se permite una captura' }
+    }
 
     const made = chess.move({
       from: chosen.from,
@@ -300,48 +406,99 @@ export function applyPlayerMove(ctx: EngineContext, input: MoveInput): MoveResul
     }
   } else if (ctx.dimension === 'espejo' && movingPiece.type === 'p' && !input.skipMirror) {
     // Peón hacia el propio bando (chess.js no lo permite: movimiento forzado)
+    const bloodAlt = bloodChainRequiresCapture(ctx, legalMoves)
+    if (bloodAlt.ok === false) return { ok: false, error: bloodAlt.reason }
     const attempt = tryMirrorPawnMove(ctx, chess.fen(), from, to, promo)
-    if (attempt.ok === false) return { ok: false, error: attempt.reason }
-    chess = new Chess(attempt.fen)
-    const afterPiece = chess.get(to as Square)
-    const didPromo = Boolean(afterPiece && afterPiece.type !== 'p')
-    san = didPromo ? `${to}=${afterPiece!.type.toUpperCase()}✦` : `${from}-${to}✦`
-    uci = from + to + (didPromo ? afterPiece!.type : '')
-    isCapture = attempt.captured
-    if (didPromo) {
-      ops.flagOps.push({
-        op: 'upsert',
-        pieceUid: `wp:${to}:${ctx.ply + 1}`,
-        color: ctx.moverColor,
-        kind: afterPiece!.type,
-        square: to,
-        wasPawn: true,
-      })
-      ops.events.push(`Espejo: peón corona en tu fila de inicio (${to})`)
+    if (attempt.ok === true) {
+      if (ctx.giratiempoActive && attempt.captured && ctx.giratiempoCaptures >= 1) {
+        return { ok: false, error: 'Giratiempo: solo se permite una captura' }
+      }
+      chess = new Chess(attempt.fen)
+      const afterPiece = chess.get(to as Square)
+      const didPromo = Boolean(afterPiece && afterPiece.type !== 'p')
+      san = didPromo ? `${to}=${afterPiece!.type.toUpperCase()}✦` : `${from}-${to}✦`
+      uci = from + to + (didPromo ? afterPiece!.type : '')
+      isCapture = attempt.captured
+      if (didPromo) {
+        ops.flagOps.push({
+          op: 'upsert',
+          pieceUid: `wp:${to}:${ctx.ply + 1}`,
+          color: ctx.moverColor,
+          kind: afterPiece!.type,
+          square: to,
+          wasPawn: true,
+        })
+        ops.events.push(`Espejo: peón corona en tu fila de inicio (${to})`)
+      } else {
+        ops.events.push('Espejo: el peón avanza hacia tu propio bando')
+      }
     } else {
-      ops.events.push('Espejo: el peón avanza hacia tu propio bando')
+      // Espejo peón falló: ¿paso fantasma puede salvar la jugada?
+      const mirrorFailReason = attempt.reason
+      const ghost = ctx.effects.find(
+        (e) => e.is_active && e.kind === 'ghost_step' && e.applied_by === ctx.moverPlayerId,
+      )
+      if (!ghost) return { ok: false, error: mirrorFailReason }
+      const bloodGhost = bloodChainRequiresCapture(ctx, legalMoves)
+      if (bloodGhost.ok === false) return { ok: false, error: bloodGhost.reason }
+      const ghostAttempt = tryGhostMove(ctx, chess.fen(), from, to, movingPiece.type)
+      if (ghostAttempt.ok === false) return { ok: false, error: ghostAttempt.reason }
+      if (ctx.giratiempoActive && ghostAttempt.captured && ctx.giratiempoCaptures >= 1) {
+        return { ok: false, error: 'Giratiempo: solo se permite una captura' }
+      }
+      chess = new Chess(ghostAttempt.fen)
+      san = `${movingPiece.type.toUpperCase()}${from}-${to}†`
+      uci = from + to
+      isCapture = ghostAttempt.captured
+      ghostUsed = true
+      ops.effectOps.push({ op: 'deactivate', id: ghost.id })
+      ops.events.push('Paso fantasma: la pieza atravesó la trayectoria ocupada')
     }
   } else {
     // ¿Paso fantasma activo?
     const ghost = ctx.effects.find(
       (e) => e.is_active && e.kind === 'ghost_step' && e.applied_by === ctx.moverPlayerId,
     )
-    if (!ghost) {
-      const why =
-        ctx.dimension === 'espejo'
-          ? `Espejo: tu jugada se invierte hacia ${to} y ahí es ilegal`
-          : 'Movimiento ilegal'
-      return { ok: false, error: why }
+    if (ghost) {
+      const bloodGhost = bloodChainRequiresCapture(ctx, legalMoves)
+      if (bloodGhost.ok === false) return { ok: false, error: bloodGhost.reason }
+      const attempt = tryGhostMove(ctx, chess.fen(), from, to, movingPiece.type)
+      if (attempt.ok === false) {
+        // Si fantasma no aplica, intentar escape de jaque/pin falso (gravitacional/ruina)
+        const rescued = tryRescueVariantMove(ctx, chess.fen(), from, to, promo, legalMoves)
+        if (rescued.ok === false) return { ok: false, error: attempt.reason }
+        chess = new Chess(rescued.fen)
+        san = rescued.san
+        uci = rescued.uci
+        isCapture = rescued.captured
+      } else {
+        if (ctx.giratiempoActive && attempt.captured && ctx.giratiempoCaptures >= 1) {
+          return { ok: false, error: 'Giratiempo: solo se permite una captura' }
+        }
+        chess = new Chess(attempt.fen)
+        san = `${movingPiece.type.toUpperCase()}${from}-${to}†`
+        uci = from + to
+        isCapture = attempt.captured
+        ghostUsed = true
+        ops.effectOps.push({ op: 'deactivate', id: ghost.id })
+        ops.events.push('Paso fantasma: la pieza atravesó la trayectoria ocupada')
+      }
+    } else {
+      // Rescate: chess.js rechazó por jaque/pin falso (gravitacional / rayos por ruina)
+      const rescued = tryRescueVariantMove(ctx, chess.fen(), from, to, promo, legalMoves)
+      if (rescued.ok === false) {
+        const why =
+          ctx.dimension === 'espejo'
+            ? `Espejo: tu jugada se invierte hacia ${to} y ahí es ilegal`
+            : rescued.error
+        return { ok: false, error: why }
+      }
+      chess = new Chess(rescued.fen)
+      san = rescued.san
+      uci = rescued.uci
+      isCapture = rescued.captured
+      ops.events.push('Regla dimensional: jugada legal tras filtrar jaques/pins inválidos')
     }
-    const attempt = tryGhostMove(ctx, chess.fen(), from, to, movingPiece.type)
-    if (attempt.ok === false) return { ok: false, error: attempt.reason }
-    chess = new Chess(attempt.fen)
-    san = `${movingPiece.type.toUpperCase()}${from}-${to}†`
-    uci = from + to
-    isCapture = attempt.captured
-    ghostUsed = true
-    ops.effectOps.push({ op: 'deactivate', id: ghost.id })
-    ops.events.push('Paso fantasma: la pieza atravesó la trayectoria ocupada')
   }
 
   // Tracking de flags: la pieza movida arrastra sus marcadores
@@ -413,6 +570,7 @@ export function applyPlayerMove(ctx: EngineContext, input: MoveInput): MoveResul
   for (const sq of passSquares) {
     const cell = cellMap.get(sq)
     if (cell?.effect !== 'monolith') continue
+    if (absorbedMonolithIds.has(cell.id)) continue
     const min = cell.time_bonus_min_s ?? 40
     const max = cell.time_bonus_max_s ?? 60
     const bonusMs = (min + Math.floor(Math.random() * (max - min + 1))) * 1000
@@ -433,13 +591,14 @@ export function applyPlayerMove(ctx: EngineContext, input: MoveInput): MoveResul
 
   // Fragilidad: al final del turno, pieza (no rey) amenazada por 2+ enemigos estalla
   if (ctx.dimension === 'fragilidad') {
+    const fenNow = chess.fen()
     const doomed: { square: string; color: Color }[] = []
     for (const row of chess.board()) {
       for (const cellPiece of row) {
         if (!cellPiece || cellPiece.type === 'k') continue
-        const enemy = cellPiece.color === 'w' ? 'b' : 'w'
-        const attackers = chess.attackers(cellPiece.square as Square, enemy)
-        if (attackers.length >= 2) {
+        const enemy: Color = cellPiece.color === 'w' ? 'black' : 'white'
+        const n = countAttackers(fenNow, cellPiece.square, enemy, ctx)
+        if (n >= 2) {
           doomed.push({
             square: cellPiece.square,
             color: cellPiece.color === 'w' ? 'white' : 'black',
@@ -457,14 +616,42 @@ export function applyPlayerMove(ctx: EngineContext, input: MoveInput): MoveResul
   }
 
   const fenRaw = chess.fen()
-  let isCheck = false
+  const opponent = otherColor(ctx.moverColor)
+  let isCheck = colorInCheck(fenRaw, opponent, ctx)
   let isMate = false
-  try {
-    const post = new Chess(fenRaw)
-    isCheck = post.isCheck()
-    isMate = post.isCheckmate()
-  } catch {
-    /* posición exótica tras remociones: sin jaque computable */
+  if (isCheck) {
+    const oppCtx: EngineContext = {
+      ...ctx,
+      fen: fenRaw,
+      turnColor: opponent,
+      moverColor: opponent,
+      moverPlayerId: ctx.opponentPlayerId,
+      opponentPlayerId: ctx.moverPlayerId,
+      giratiempoActive: false,
+      giratiempoMovesLeft: 0,
+      giratiempoCaptures: 0,
+    }
+    isMate = listLegalMoves(oppCtx).length === 0
+  } else if (
+    ctx.dimension === 'gravitacional' ||
+    blockedSquares(ctx).size > 0 ||
+    ctx.dimension === 'cadena_sangre'
+  ) {
+    // Ahogado bajo reglas dimensionales
+    const oppCtx: EngineContext = {
+      ...ctx,
+      fen: fenRaw,
+      turnColor: opponent,
+      moverColor: opponent,
+      moverPlayerId: ctx.opponentPlayerId,
+      opponentPlayerId: ctx.moverPlayerId,
+      giratiempoActive: false,
+      giratiempoMovesLeft: 0,
+      giratiempoCaptures: 0,
+    }
+    if (listLegalMoves(oppCtx).length === 0) {
+      // No tratamos ahogado como mate; isMate queda false
+    }
   }
 
   // Giratiempo: si queda un movimiento extra, el FEN debe seguir en nuestro turno
@@ -496,15 +683,56 @@ export function applyPlayerMove(ctx: EngineContext, input: MoveInput): MoveResul
 
 /** Jugadas legales bajo dimensión (para el bot y validaciones globales). */
 export function listLegalMoves(ctx: EngineContext): Move[] {
-  const chess = new Chess(fenWithSideToMove(ctx.fen, ctx.turnColor))
-  const all = (chess.moves({ verbose: true }) as Move[]).filter(
-    (m) => checkMoveAgainstBoard(ctx, m).ok,
-  )
+  const synced = fenWithSideToMove(ctx.fen, ctx.turnColor)
+  const chess = new Chess(synced)
+  const vanilla = (chess.moves({ verbose: true }) as Move[]).filter((m) => {
+    if (!checkMoveAgainstBoard(ctx, m).ok) return false
+    // Re-validar jaque con reglas dimensionales (gravitacional / ruina)
+    try {
+      const probe = new Chess(synced)
+      probe.move({ from: m.from, to: m.to, promotion: m.promotion })
+      return !colorInCheck(probe.fen(), ctx.turnColor, ctx)
+    } catch {
+      return false
+    }
+  })
+
+  const key = (m: { from: string; to: string; promotion?: string }) =>
+    `${m.from}${m.to}${m.promotion ?? ''}`
+  const seen = new Set(vanilla.map(key))
+  const out: Move[] = [...vanilla]
+
+  const needsRescue =
+    ctx.dimension === 'gravitacional' || blockedSquares(ctx).size > 0
+  if (needsRescue) {
+    for (const p of generatePseudoLegalMoves(synced, ctx.turnColor)) {
+      if (seen.has(key(p))) continue
+      const asMove = {
+        from: p.from,
+        to: p.to,
+        piece: p.piece,
+        captured: p.captured,
+        promotion: p.promotion,
+        color: cjs(ctx.turnColor),
+        flags: '',
+        san: '',
+        lan: '',
+        before: synced,
+        after: '',
+      } as Move
+      if (!checkMoveAgainstBoard(ctx, asMove).ok) continue
+      const next = fenAfterPseudoMove(synced, p, ctx.turnColor)
+      if (!next || colorInCheck(next, ctx.turnColor, ctx)) continue
+      seen.add(key(p))
+      out.push(asMove)
+    }
+  }
+
   if (ctx.dimension === 'cadena_sangre') {
-    const captures = all.filter((m) => m.captured)
+    const captures = out.filter((m) => m.captured)
     if (captures.length) return captures
   }
-  return all
+  return out
 }
 
 /**

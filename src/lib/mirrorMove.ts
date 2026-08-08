@@ -36,6 +36,7 @@ export function applyMirrorPawnFen(
   from: string,
   to: string,
   color: 'white' | 'black',
+  blocked?: Set<string>,
 ): string | null {
   try {
     const chess = new Chess(fen)
@@ -48,6 +49,8 @@ export function applyMirrorPawnFen(
     const doubleRank = color === 'white' ? 7 : 2
     const promoRank = color === 'white' ? 1 : 8
     const target = chess.get(to as Square)
+
+    if (blocked?.has(to)) return null
 
     const isPush =
       df === 0 && !target && (dr === homeDir || (dr === 2 * homeDir && Number(from[1]) === doubleRank))
@@ -62,6 +65,7 @@ export function applyMirrorPawnFen(
     if (isPush && Math.abs(dr) === 2) {
       const mid = squareAt(fileOf(from), rankOf(from) + homeDir)
       if (!mid || chess.get(mid as Square)) return null
+      if (blocked?.has(mid)) return null
     }
 
     chess.remove(from as Square)

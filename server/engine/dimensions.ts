@@ -64,6 +64,12 @@ export function bloodChainViolation(
 ): DimCheck {
   if (ctx.dimension !== 'cadena_sangre') return { ok: true }
   if (chosen.captured) return { ok: true }
+  return bloodChainRequiresCapture(ctx, allLegal)
+}
+
+/** Misma regla para rutas espejo/fantasma (sin Move de chess.js). */
+export function bloodChainRequiresCapture(ctx: EngineContext, allLegal: Move[]): DimCheck {
+  if (ctx.dimension !== 'cadena_sangre') return { ok: true }
   const captureExists = allLegal.some(
     (m) => m.captured && checkMoveAgainstBoard(ctx, m).ok,
   )

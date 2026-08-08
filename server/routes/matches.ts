@@ -575,6 +575,10 @@ matchesRouter.post('/:id/joker/use', requireAuth, async (req, res, next) => {
       res.status(403).json({ error: 'not your match seat' })
       return
     }
+    if (match.turn_color !== you.color) {
+      res.status(409).json({ error: 'no es tu turno — los comodines solo en tu turno' })
+      return
+    }
 
     const ctx = await engineContextFor(matchId, state, you.color as Color)
     const result = applyJoker(ctx, code, payload)
