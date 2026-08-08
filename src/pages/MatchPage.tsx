@@ -30,6 +30,14 @@ import { fenHideEnemyInvisible } from '@/lib/invisibleFen'
 import { useLiveClocks } from '@/hooks/useLiveClocks'
 import type { MatchState, Joker, MatchPlayer, PieceFlag } from '@/types/match'
 
+/** Alinea el FEN con matches.turn_color (Giratiempo / desync). */
+function fenWithSideToMove(fen: string, color: 'white' | 'black'): string {
+  const parts = fen.split(' ')
+  if (parts.length < 2) return fen
+  parts[1] = color === 'white' ? 'w' : 'b'
+  return parts.join(' ')
+}
+
 /** Casillas estrictamente entre a y b (cliente; espejo de server/engine/board). */
 function pathBetweenClient(a: string, b: string): string[] {
   const df = b.charCodeAt(0) - a.charCodeAt(0)
@@ -605,7 +613,7 @@ export function MatchPage() {
       return false
     }
 
-    const chess = new Chess(match!.fen)
+    const chess = new Chess(fenWithSideToMove(match!.fen, match!.turn_color))
     const piece = chess.get(sourceSquare as 'a1')
     let dest = targetSquare
     // Preview alineado con el motor: en Espejo el comando se invierte por completo
@@ -632,15 +640,25 @@ export function MatchPage() {
     }
 
     let previewFen: string | null = null
-    const preview = chess.move({ from: sourceSquare, to: dest })
-    if (preview) {
-      previewFen = chess.fen()
-    } else if (
+    // chess.js v1 lanza en jugadas ilegales (no devuelve null)
+    try {
+      const preview = chess.move({ from: sourceSquare, to: dest })
+      if (preview) previewFen = chess.fen()
+    } catch {
+      previewFen = null
+    }
+    if (
+      !previewFen &&
       match!.current_dimension === 'espejo' &&
       piece?.type === 'p' &&
       you?.color
     ) {
-      previewFen = applyMirrorPawnFen(match!.fen, sourceSquare, dest, you.color)
+      previewFen = applyMirrorPawnFen(
+        fenWithSideToMove(match!.fen, match!.turn_color),
+        sourceSquare,
+        dest,
+        you.color,
+      )
     }
     if (!previewFen) {
       setError(
