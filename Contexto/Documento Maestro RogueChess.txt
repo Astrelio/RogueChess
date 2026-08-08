@@ -1,0 +1,113 @@
+﻿♟️ RogueChess (Documento de Diseño)
+1. Concepto Principal
+Una variante estratégica y dinámica del ajedrez donde el tablero cambia sus propias reglas periódicamente y los jugadores utilizan el tiempo de su reloj como moneda de cambio para ejecutar habilidades sobrenaturales.
+2. Bucle de Juego (Core Loop)
+La partida avanza a través de un ciclo continuo de 3 fases:
+1. Fase de Acción: Los jugadores realizan sus movimientos de ajedrez normales. La fase dura exactamente 8 movimientos en total (4 turnos por jugador).
+2. Fase de Tienda: Una pausa táctica donde se abre el mercado de comodines.
+3. Fase de Grieta: El entorno del tablero cambia a una nueva dimensión, alterando la física o visión de la partida. El ciclo vuelve a empezar.
+3. Economía y Sistema de Tienda
+* Moneda: No hay oro ni puntos. Se paga con el Tiempo del reloj de ajedrez.
+* Oferta (Estilo Rogue-like): En la tienda aparecen 3 comodines (cartas) al azar de la baraja que el jugador eligió antes de empezar la partida.
+* Inventario: Cada jugador tiene un límite máximo de 3 espacios para guardar comodines.
+* Riesgo: Comprar habilidades te da ventaja en el tablero, pero te acerca a perder por falta de tiempo.
+4. Las Dimensiones (El Entorno)
+El cambio de dimensión altera cómo se juega, pero el entorno natural nunca elimina piezas directamente.
+* Dimensión Espejo: Los ejes de movimiento se invierten. Si el jugador intenta mover a la derecha, la pieza va a la izquierda. Arriba es abajo y viceversa.
+* Dimensión Bluriel: Niebla táctica. Tras el movimiento de un jugador, sus piezas se vuelven borrosas o invisibles para el rival, forzando a jugar con la memoria.
+* Dimensión Gravitacional: La gravedad aplastante limita la movilidad. Las piezas de largo alcance (Reinas, Torres, Alfiles) solo pueden moverse un máximo de 3 casillas por turno.
+* Dimensión Cadena: de Sangre: Agresividad obligatoria. Si en tu turno tienes alguna jugada que permita capturar una pieza enemiga, estás obligado a capturar. No se permiten movimientos defensivos ni posicionamientos si hay una captura disponible en el tablero.
+* Dimensión Ruina: Zonas muertas. Cada casilla donde ocurra una captura de pieza queda destruida e inhabilitada. Ninguna pieza puede volver a pisar o atravesar esas casillas durante el resto de la fase.
+* El Mercado Negro: Las 4 casillas aleatorias contienen "Monolitos de Tiempo". Cualquier pieza que ocupe o atraviese una de estas casillas otorga +40 hasta 60 segundos libres al reloj del jugador, y cada captura o destrucción de una pieza agrega segundos de tiempo al reloj del jugador que hizo la jugada (hasta 15s acumulables).
+* Dimensión Fragilidad: Cristalización. Todas las piezas del tablero se vuelven vulnerables: si una de tus piezas es amenazada por dos piezas enemigas al mismo tiempo, queda destruida automáticamente sin necesidad de ser capturada.
+
+
+
+
+
+
+5. Facciones y Barajas
+Antes de iniciar la partida, el jugador selecciona una baraja temática.
+👻 Baraja Espectral (Enfoque: Engaño y Sigilo)
+* Paso Fantasma (común) (10s): Permite a una pieza saltar/atravesar piezas ocupadas en su trayectoria.
+* Imperius (legendaria) (60s): Toma el control de una pieza enemiga durante 1 turno.
+* Capa de invisibilidad (épica) (30s): Tu pieza se vuelve completamente invisible para el rival hasta que ataque o sea atacada.
+* Morsmordre (épica) (35s): Obliga a una pieza enemiga adyacente a retroceder una casilla hacia atrás.
+* Expecto Patronum (legendario) (20): inhabilita el efecto de miedo del comodín Morsmordre en todo el tablero durante toda la partida.
+⚛️ Baraja Antimateria (Enfoque: Caos y Destrucción)
+* Bombarda (épica) (40s): Sacrifica a uno de tus peones para crear una explosión que "quema" un área de 3x3 temporalmente.
+* Aparición (común) (20s): Intercambia la posición de dos de tus propias piezas en el tablero.
+* Poción Multijugos (legendaria) (65s): Transforma un peón en Reina por 1 solo turno; luego el peón muere.
+* Defodio (60s) (legendaria): Crea una trampa en una casilla vacía durante 1 turno. (Excepción de regla: Esta es la única anomalía en el juego capaz de asesinar piezas instantáneamente si caen en ella)
+* Avada Kedavra (legendario) (40s): Asesina cualquier peón o peón convertido en reina, caballo, etc. 
+⏳ Baraja Tempus (Enfoque: Control y Economía)
+* Axio tempus (común) (5s): Roba segundos 10 segundos del reloj del oponente y los suma al tuyo.
+* Arresto momentum (legendaria) (50s): Acelera el reloj del rival al doble de velocidad durante su siguiente turno.
+* petrificus totalus (épico) (30s): Tu reloj se detiene por completo durante tu próximo movimiento.
+* Giratiempo: Permite a una de tus piezas moverse dos veces en el mismo turno (restringido a una sola captura máxima).
+
+
+
+
+
+
+
+
+🛡️ Reglas de Oro Universales (Para evitar romper el Ajedrez)
+Antes de ver los casos específicos, debes establecer estas leyes inquebrantables:
+* Inmunidad del Rey: El Rey nunca puede ser asesinado por un comodín (como Defodio o Bombarda) ni por los efectos de entorno (como Fragilidad). Solo puede morir por un "Jaque Mate" tradicional.
+* Prioridad del Jaque: Las reglas estándar de Jaque superan a las Dimensiones. Si estás en Jaque, estás obligado a salvar al Rey, sin importar lo que exija la Dimensión.
+🌌 Casos Límite: Las Dimensiones
+1. Dimensión Espejo (Controles Invertidos)
+* El dilema de los Peones: Como los peones solo van hacia adelante, ¿qué pasa aquí?
+Regla: Los peones invierten su eje por completo. Se moverán hacia tu propio lado de la mesa y atacarán en diagonal invertida. Si un peón llega a tu propia fila de inicio, sí puede coronar (promocionar).
+* Enroque: ¿Se invierte la posición de la torre y el rey al enrocar?
+Regla: El comando se invierte (intentar enrocar a la derecha lo hará a la izquierda), pero la posición final de las piezas obedece a las reglas del ajedrez clásico.
+2. Dimensión Bluriel (Niebla Táctica)
+   * El dilema del Jaque invisible: ¿Qué pasa si una pieza invisible amenaza al Rey?
+Regla: El juego siempre debe anunciar "Jaque". El jugador sabrá que su Rey está amenazado, pero tendrá que deducir o recordar qué pieza invisible lo está causando para bloquearla o escapar.
+3. Dimensión Gravitacional (Max 3 Casillas)
+      * El dilema de la Visión: ¿Una Reina puede hacer Jaque a un Rey que está a 4 casillas de distancia?
+Regla: No. La gravedad dobla el espacio; las piezas literalmente pierden su "línea de visión" más allá de 3 casillas. No pueden inmovilizar (pin) ni dar Jaque a más de 3 de distancia.
+4. Dimensión Cadena de Sangre (Captura Obligatoria)
+         * El dilema del Jaque Suicida: ¿Qué pasa si la única captura disponible expone a mi Rey a un Jaque?
+Regla: Regla de Oro. Las capturas son obligatorias solo si son movimientos legales. No puedes suicidar a tu Rey. Si la captura te pone en Jaque, estás exento de hacerla.
+5. Dimensión Ruina (Zonas Muertas)
+            * El dilema del Salto: ¿Pueden las piezas pasar por las casillas destruidas?
+Regla: Las piezas que se deslizan (Torre, Alfil, Reina) chocarán con la zona muerta y no podrán pasar. Excepción: Los Caballos pueden saltar por encima de las zonas muertas, siempre y cuando aterricen en una casilla sana.
+6. El Mercado Negro (Monolitos)
+               * El dilema del Spawn: ¿Qué pasa si un Monolito aparece exactamente en una casilla que ya está ocupada por una pieza?
+Regla: El jugador dueño de esa pieza absorbe el tiempo inmediatamente y el monolito desaparece en el acto.
+7. Dimensión Fragilidad (Cristalización)
+                  * El dilema de las Múltiples Bajas: Si muevo una pieza y de repente amenazo a dos piezas rivales simultáneamente, creando una doble amenaza para ambas, ¿mueren?
+Regla: Sí. Las muertes por cristalización se resuelven al final de cada turno. Cualquier pieza (excepto el Rey) que termine el turno bajo la mira de dos enemigos, estalla instantáneamente en el lugar.
+🃏 Casos Límite: Facciones y Barajas
+👻 Baraja Espectral
+                     * Imperius (Controlar enemigo):
+Caso Límite: ¿Puedo usar la pieza enemiga controlada para atacar a otra pieza enemiga? Regla: Sí, el fuego amigo está habilitado. ¿Puedo controlar al Rey rival? Regla: No, el Rey es inmune al control mental.
+                     * Morsmordre (Retroceso):
+Caso Límite: ¿Qué pasa si la casilla detrás del enemigo está ocupada por otra pieza o es el borde del tablero? Regla: Si está bloqueada por el borde o por una pieza de su propio equipo, el hechizo falla y se gasta el tiempo inútilmente. Si está bloqueada por una pieza de tu equipo, la aplasta y la mata.
+                     * Expecto Patronum:
+Caso Límite: Este ítem es extremadamente situacional (solo sirve si el rival usa la baraja Espectral). Regla: Debería ser un comodín pasivo que cueste poco o nada, de lo contrario, el jugador que lo compre desperdiciará espacio en el inventario si el enemigo no tiene Morsmordre.
+⚛️ Baraja Antimateria
+                        * Bombarda (Explosión 3x3):
+Caso Límite: ¿La explosión mata al instante? Regla: No, solo inhabilita ("quema") la zona para moverse por ella. Si hay piezas dentro del 3x3 al momento de explotar, son empujadas a la casilla segura más cercana.
+                        * Poción Multijugos (Peón a Reina):
+Caso Límite: Si pongo en Jaque al Rey enemigo con esta Reina falsa, y luego termina el turno (la Reina muere), ¿qué pasa? Regla: El Jaque es válido durante el turno del rival. Debe responder al Jaque (moviendo al Rey o bloqueando). Si sobrevive, en tu siguiente turno la Reina colapsa y muere.
+                        * Avada Kedavra (Anti-Peones):
+Caso Límite: Funciona en "peones convertidos". ¿Qué pasa si el peón se convirtió legítimamente al llegar al otro lado del tablero? Regla: Para que esto funcione, el juego debe mantener un "marcador" invisible en el código que identifique que esa Reina solía ser un Peón. ¡Asegúrate de programar esa etiqueta!
+⏳ Baraja Tempus
+                           * Arresto Momentum (Velocidad x2):
+Caso Límite: ¿Qué pasa si el rival tiene el comodín Petrificus Totalus activo en ese mismo turno? Regla: Petrificus Totalus (Detener el tiempo) tiene prioridad absoluta. El tiempo x2 se anula.
+                           * Giratiempo (Doble movimiento):
+Caso Límite: ¿Puedo dar un Jaque en el primer movimiento y luego capturar al Rey en el segundo? Regla: No. Si el primer movimiento resulta en un Jaque, el turno del Giratiempo termina inmediatamente, perdiendo el segundo movimiento para que el rival pueda defender a su Rey.
+
+
+
+
+
+
+
+
+
+link de documentación de portal, por si cursor no la conoce: https://docs.useportal.co/

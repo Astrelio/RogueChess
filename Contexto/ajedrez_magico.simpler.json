@@ -1,0 +1,578 @@
+{
+  "_format": "simpler-project",
+  "_version": 2,
+  "_exportedAt": "2026-08-07T19:23:24.278Z",
+  "project": {
+    "id": "1620239b-0756-4c0f-8c37-830dc9424bd7",
+    "name": "Ajedrez magico",
+    "status": "in-progress",
+    "createdAt": "2026-08-07T17:27:23.862Z",
+    "updatedAt": "2026-08-07T19:22:18.523Z"
+  },
+  "modules": {
+    "seed": {
+      "projectId": "1620239b-0756-4c0f-8c37-830dc9424bd7",
+      "projectName": "Ajedrez magico",
+      "oneLineSummary": "Un juego de ajedrez en la web con mecanicas unicas",
+      "problemStatement": "el ajedrez normal se ha mantenido desde siempre como un jugo de agilidad mental, pero aumentaremos el nivel con nuevas mecanicas tipo rogue like.",
+      "targetAudience": [
+        {
+          "id": "f727b10b-7607-4c1d-9c3e-1f419b3d3583",
+          "label": "Jugadoes casuales de ajedrez"
+        },
+        {
+          "id": "e53d9d43-fb7b-4506-aac3-9a61ea8e8cc4",
+          "label": "jugadores de ajedrez"
+        }
+      ],
+      "hiddenFailureReason": "probablemente por la complejidad de las mecanicas"
+    },
+    "anatomy": {
+      "projectId": "1620239b-0756-4c0f-8c37-830dc9424bd7",
+      "features": [
+        {
+          "id": "419a4dd1-6ffa-4b17-a2fa-2c20eb6fadb1",
+          "name": "landing corta de inicio",
+          "description": "una lading sin scroll de bienvenida y inicio de sesion obligatorio se se decea jugar",
+          "type": "core",
+          "complexity": "medium",
+          "dependencies": [],
+          "associatedNodes": []
+        },
+        {
+          "id": "08de54d3-1cc3-465f-8ce1-646ce314b022",
+          "name": "login",
+          "description": "para iniciar o registrar sesion",
+          "type": "core",
+          "complexity": "medium",
+          "dependencies": [
+            "419a4dd1-6ffa-4b17-a2fa-2c20eb6fadb1"
+          ],
+          "associatedNodes": []
+        },
+        {
+          "id": "e9965951-4700-4161-ad56-5442051ccad7",
+          "name": "buscar partida",
+          "description": "busca partida para el jugador, si no se encuentra jugador real entonces le empareja un bot. las partidas don de 5 minutos.",
+          "type": "supporting",
+          "complexity": "high",
+          "dependencies": [
+            "08de54d3-1cc3-465f-8ce1-646ce314b022"
+          ],
+          "associatedNodes": []
+        },
+        {
+          "id": "0eea23f1-db8b-47f1-b410-841929df5ab7",
+          "name": "crear partida personalizada",
+          "description": "envia una invitacion a otro jugaador a travez de invitacion dentro de la aplicacion para jugar ",
+          "type": "core",
+          "complexity": "medium",
+          "dependencies": [
+            "08de54d3-1cc3-465f-8ce1-646ce314b022"
+          ],
+          "associatedNodes": []
+        },
+        {
+          "id": "85ca482a-b209-4eda-a896-f8eed67f43df",
+          "name": "tablero de dimensiones",
+          "description": "el tablero tiene varias dimensiones (mecanicas que cambian depues de cada fase de compra)",
+          "type": "core",
+          "complexity": "high",
+          "dependencies": [
+            "08de54d3-1cc3-465f-8ce1-646ce314b022",
+            "0eea23f1-db8b-47f1-b410-841929df5ab7",
+            "e9965951-4700-4161-ad56-5442051ccad7"
+          ],
+          "associatedNodes": []
+        },
+        {
+          "id": "28943b74-8a01-4f6e-a314-c9932d3dc9a4",
+          "name": "comodines ",
+          "description": "consumibles que otorgan ventajas a los jugadores y que se pueden conseguir comprandolos en la fase de la tienda. la moneda con la que se compran es el tiempo del reloj del jugador",
+          "type": "core",
+          "complexity": "high",
+          "dependencies": [
+            "10193780-c3e5-4e76-8b1c-2629a21d45ef"
+          ],
+          "associatedNodes": []
+        },
+        {
+          "id": "0a3f47dc-f9bb-4e96-8205-18ecf9ea6c6c",
+          "name": "reglas basicas del ajedrez",
+          "description": "el juego sigue siendo ajedrez en la primera fase hasta que se termine el ciclo de los 8 movimientos (4 por jugador) depues de eso las reglas cambian a las reglas regidas por la dimencion. y algunas se mantienen incluso si estan en otra dimencion del tablero (haque, haque mate, etc)",
+          "type": "core",
+          "complexity": "high",
+          "dependencies": [
+            "e9965951-4700-4161-ad56-5442051ccad7",
+            "0eea23f1-db8b-47f1-b410-841929df5ab7"
+          ],
+          "associatedNodes": []
+        },
+        {
+          "id": "ad97ebcf-74f8-4749-8e03-78aff730d95e",
+          "name": "reglas nativas de las dimenciones y/o los comodines",
+          "description": "reglas definidas por las dimensiones y los comodines ",
+          "type": "core",
+          "complexity": "high",
+          "dependencies": [
+            "85ca482a-b209-4eda-a896-f8eed67f43df",
+            "28943b74-8a01-4f6e-a314-c9932d3dc9a4"
+          ],
+          "associatedNodes": []
+        },
+        {
+          "id": "27dd4756-8b55-4e4f-af20-81f459a6aa33",
+          "name": "categoria de comodines",
+          "description": "existen comodines comunes, epicos y legendarios",
+          "type": "nice-to-have",
+          "complexity": "medium",
+          "dependencies": [
+            "28943b74-8a01-4f6e-a314-c9932d3dc9a4"
+          ],
+          "associatedNodes": []
+        },
+        {
+          "id": "6bafceec-6ade-4e89-8f10-078d309657aa",
+          "name": "vender un comodin",
+          "description": "en la fase de compra en la tienda puede venderse comodines obtenidos para recuperar el equivalente de tiempo que consto en la compra del comodin. el jugador solo podra llevar 3 comodines por fase, si quiere comprar otro tiene que vender uno de los tres quie tiene o haber usado uno en el ciclo anterior",
+          "type": "core",
+          "complexity": "high",
+          "dependencies": [
+            "10193780-c3e5-4e76-8b1c-2629a21d45ef"
+          ],
+          "associatedNodes": []
+        },
+        {
+          "id": "b363b9f9-d137-4daa-8e09-9785f42a44d2",
+          "name": "sistema de espectadores.",
+          "description": "los espectadores pueden ver la partida de otros jugadores en tiempo real. pueden verla en la tabla clasificacion y al dar click en el nombre del usario que aparezca como jugando partida y acceder con el boton de espectiar",
+          "type": "core",
+          "complexity": "high",
+          "dependencies": [
+            "08de54d3-1cc3-465f-8ce1-646ce314b022"
+          ],
+          "associatedNodes": []
+        },
+        {
+          "id": "8982612c-79f9-497c-9857-5c214ddc2257",
+          "name": "tabla de clasificacion",
+          "description": "se asigna puntos a los mejores jugadores con un numero de color reluciente al lado del nombre correspondiente a su numero en la clasificación de la tabla.\nsi esta inferior que tres incluyendo el tres el color es bronce, si es dos entonces es plata, si en 1 dorado brillante.",
+          "type": "supporting",
+          "complexity": "high",
+          "dependencies": [
+            "08de54d3-1cc3-465f-8ce1-646ce314b022"
+          ],
+          "associatedNodes": []
+        },
+        {
+          "id": "10193780-c3e5-4e76-8b1c-2629a21d45ef",
+          "name": "fase de compra",
+          "description": "esta fase se puede repetir varias veces en partida, es donde se puede comprar o vender comodines",
+          "type": "core",
+          "complexity": "medium",
+          "dependencies": [
+            "28943b74-8a01-4f6e-a314-c9932d3dc9a4",
+            "0eea23f1-db8b-47f1-b410-841929df5ab7",
+            "e9965951-4700-4161-ad56-5442051ccad7"
+          ],
+          "associatedNodes": []
+        },
+        {
+          "id": "6d229c75-d57e-422f-b5d6-dcc74366b925",
+          "name": "emojis durante la partida",
+          "description": "se puede animar desde el modo espectador a los judaroes con emojis nativos de los dispositivos y se renderizan en tiempo real en la partida. esto tiene culdown para que no se abuse de enviar emojis",
+          "type": "nice-to-have",
+          "complexity": "high",
+          "dependencies": [
+            "08de54d3-1cc3-465f-8ce1-646ce314b022",
+            "b363b9f9-d137-4daa-8e09-9785f42a44d2"
+          ],
+          "associatedNodes": []
+        },
+        {
+          "id": "b9b7a52a-37a0-49ee-bd6d-929b9af2077a",
+          "name": "sistemas de estado en el perfil",
+          "description": "en linea, jugando, etc.",
+          "type": "core",
+          "complexity": "medium",
+          "dependencies": [],
+          "associatedNodes": []
+        },
+        {
+          "id": "a13ef2e3-d4ad-40ff-b494-67c82fc8100c",
+          "name": "estado de animo",
+          "description": "el usuario puede poner una frase o un emoji para mostrarse a manera de globo o nube de texto encima de si nombre en las tablas o en su perfil algo parecido a lo que hace github.",
+          "type": "core",
+          "complexity": "high",
+          "dependencies": [
+            "08de54d3-1cc3-465f-8ce1-646ce314b022"
+          ],
+          "associatedNodes": []
+        },
+        {
+          "id": "6d4f9626-ac13-48d6-ba18-b1cc47471dca",
+          "name": "sistema de popularidad de usuarios",
+          "description": "usuarios pueden mandar un super like a un jugador cada dia para darle popularidad en la pagina de clasificacion. solo un superlike por dia y por un jugador a otro jugador",
+          "type": "out-of-scope",
+          "complexity": "high",
+          "dependencies": [],
+          "associatedNodes": []
+        },
+        {
+          "id": "b0bb25a6-1c59-49fd-9dec-d93161b3dacf",
+          "name": "sistema de felicitación a desarrollador",
+          "description": "poder enviar un super corazon a los desarrolladores para hacerles saber que disfrutan el juego",
+          "type": "out-of-scope",
+          "complexity": "medium",
+          "dependencies": [],
+          "associatedNodes": []
+        }
+      ]
+    },
+    "architecture": {
+      "projectId": "1620239b-0756-4c0f-8c37-830dc9424bd7",
+      "nodes": [
+        {
+          "id": "f1967031-2f4b-421b-9e27-a1119d02fa15",
+          "name": "home",
+          "description": "lading de incio",
+          "parentId": null,
+          "associatedFeatures": [
+            "419a4dd1-6ffa-4b17-a2fa-2c20eb6fadb1"
+          ],
+          "order": 0
+        },
+        {
+          "id": "5727d0ca-d771-4f73-887d-eeaf99b5f0b2",
+          "name": "login",
+          "description": "iniciar o registrar sesion",
+          "parentId": "f1967031-2f4b-421b-9e27-a1119d02fa15",
+          "associatedFeatures": [
+            "08de54d3-1cc3-465f-8ce1-646ce314b022",
+            "419a4dd1-6ffa-4b17-a2fa-2c20eb6fadb1"
+          ],
+          "order": 0
+        },
+        {
+          "id": "a323d792-2ab7-4e3a-a272-07ecb31207ed",
+          "name": "inicio sesion",
+          "description": "inciar una sesion existente",
+          "parentId": "5727d0ca-d771-4f73-887d-eeaf99b5f0b2",
+          "associatedFeatures": [],
+          "order": 0
+        },
+        {
+          "id": "84ad8d97-0328-4f75-96f1-b4cfc893d6ee",
+          "name": "resgistrar sesion",
+          "description": "resgitrar una cuenta",
+          "parentId": "5727d0ca-d771-4f73-887d-eeaf99b5f0b2",
+          "associatedFeatures": [],
+          "order": 1
+        },
+        {
+          "id": "af738bc1-3da0-426e-a250-ddd6c84d94b6",
+          "name": "buscar partida",
+          "description": "partida rapida",
+          "parentId": "f1967031-2f4b-421b-9e27-a1119d02fa15",
+          "associatedFeatures": [
+            "e9965951-4700-4161-ad56-5442051ccad7",
+            "08de54d3-1cc3-465f-8ce1-646ce314b022",
+            "419a4dd1-6ffa-4b17-a2fa-2c20eb6fadb1"
+          ],
+          "order": 1
+        },
+        {
+          "id": "5906ceaa-1cf9-4b58-834a-20146947f907",
+          "name": "crear partida personalizada",
+          "description": "crear una sala con 2 jugadores, y varios espectadores. cosas de personalizacion como tiempo, etc.",
+          "parentId": "f1967031-2f4b-421b-9e27-a1119d02fa15",
+          "associatedFeatures": [
+            "0eea23f1-db8b-47f1-b410-841929df5ab7",
+            "08de54d3-1cc3-465f-8ce1-646ce314b022"
+          ],
+          "order": 2
+        },
+        {
+          "id": "6b172bcf-7fb1-4bf9-9668-788c00cb49c2",
+          "name": "partida",
+          "description": "partida de ajedrez astreliano",
+          "parentId": "af738bc1-3da0-426e-a250-ddd6c84d94b6",
+          "associatedFeatures": [
+            "08de54d3-1cc3-465f-8ce1-646ce314b022",
+            "e9965951-4700-4161-ad56-5442051ccad7",
+            "85ca482a-b209-4eda-a896-f8eed67f43df",
+            "28943b74-8a01-4f6e-a314-c9932d3dc9a4",
+            "0a3f47dc-f9bb-4e96-8205-18ecf9ea6c6c",
+            "ad97ebcf-74f8-4749-8e03-78aff730d95e",
+            "6bafceec-6ade-4e89-8f10-078d309657aa",
+            "10193780-c3e5-4e76-8b1c-2629a21d45ef",
+            "b363b9f9-d137-4daa-8e09-9785f42a44d2",
+            "6d229c75-d57e-422f-b5d6-dcc74366b925",
+            "27dd4756-8b55-4e4f-af20-81f459a6aa33"
+          ],
+          "order": 0
+        },
+        {
+          "id": "aa19e11d-4bef-4c5a-bf4e-599ca097cef6",
+          "name": "partida personalizada",
+          "description": "partida personalizada",
+          "parentId": "5906ceaa-1cf9-4b58-834a-20146947f907",
+          "associatedFeatures": [
+            "08de54d3-1cc3-465f-8ce1-646ce314b022",
+            "0eea23f1-db8b-47f1-b410-841929df5ab7",
+            "85ca482a-b209-4eda-a896-f8eed67f43df",
+            "28943b74-8a01-4f6e-a314-c9932d3dc9a4",
+            "0a3f47dc-f9bb-4e96-8205-18ecf9ea6c6c",
+            "ad97ebcf-74f8-4749-8e03-78aff730d95e",
+            "27dd4756-8b55-4e4f-af20-81f459a6aa33",
+            "6bafceec-6ade-4e89-8f10-078d309657aa",
+            "b363b9f9-d137-4daa-8e09-9785f42a44d2",
+            "10193780-c3e5-4e76-8b1c-2629a21d45ef",
+            "6d229c75-d57e-422f-b5d6-dcc74366b925"
+          ],
+          "order": 0
+        },
+        {
+          "id": "2b414b80-0066-4cfc-a211-dfd758cf1a5c",
+          "name": "juego primo",
+          "description": "empieza la partida normal, sin anomalias en el tablero ni comodines",
+          "parentId": "6b172bcf-7fb1-4bf9-9668-788c00cb49c2",
+          "associatedFeatures": [
+            "85ca482a-b209-4eda-a896-f8eed67f43df"
+          ],
+          "order": 0
+        },
+        {
+          "id": "04674974-b800-4bd8-a5fd-40c8c4dcbcbf",
+          "name": "fase de compra",
+          "description": "depues de que se termine el ciclo de los 8 movimientos se inicia la fase de compra de comodines. los comodines son aleatorios con probabilidad de aparecer segun su rareza. solo se pueden comprar 3 comodines. si el jugador solo puede consumir uno en partida y depues comprar, o vender uno y comprar otro. por cada fase.",
+          "parentId": "6b172bcf-7fb1-4bf9-9668-788c00cb49c2",
+          "associatedFeatures": [
+            "28943b74-8a01-4f6e-a314-c9932d3dc9a4",
+            "10193780-c3e5-4e76-8b1c-2629a21d45ef"
+          ],
+          "order": 1
+        },
+        {
+          "id": "ad1fd33f-6500-4ae2-a9b3-bb73b11b0ad5",
+          "name": "cambio de dimension",
+          "description": "el tablero deja de ser un tablero normal y cambia a una dimension diferente.ñ. las dimenciones son aleatorias todas con la misma probabilidad de aparecer.\ntienen el mismo ciclo de movimientos. 8, 4 por jugador y pueden consumir los comodines que compraron en la tienda para obtener una ventaja.",
+          "parentId": "6b172bcf-7fb1-4bf9-9668-788c00cb49c2",
+          "associatedFeatures": [
+            "85ca482a-b209-4eda-a896-f8eed67f43df"
+          ],
+          "order": 2
+        },
+        {
+          "id": "141bd199-b031-4a37-bf64-8673588e9427",
+          "name": "loop de juego",
+          "description": "depues de que se termine otra vez el ciclo de los 8 movimientos vuelve la fase de compra, y depues se vuelve a cambiar la dimension. asi sucesivamente hasta que uno de los jugadores pierda, termine en tablas o se rinda",
+          "parentId": "6b172bcf-7fb1-4bf9-9668-788c00cb49c2",
+          "associatedFeatures": [
+            "e9965951-4700-4161-ad56-5442051ccad7"
+          ],
+          "order": 3
+        },
+        {
+          "id": "ecb432bb-ca76-4122-b015-bfc8eb8d1737",
+          "name": "tiene el mismo ciclo que la partida normal",
+          "description": "juego primo, fase de compra y cambio de dimension.",
+          "parentId": "aa19e11d-4bef-4c5a-bf4e-599ca097cef6",
+          "associatedFeatures": [
+            "0eea23f1-db8b-47f1-b410-841929df5ab7"
+          ],
+          "order": 0
+        },
+        {
+          "id": "b382a14c-185f-49ca-aa43-7d02b6b63d80",
+          "name": "tabla de clasificacion",
+          "description": "una tabla de los mejores jugadores. aqui se muestra el estado, popularidad y sistema de estado de perfil.",
+          "parentId": "f1967031-2f4b-421b-9e27-a1119d02fa15",
+          "associatedFeatures": [
+            "8982612c-79f9-497c-9857-5c214ddc2257",
+            "6d4f9626-ac13-48d6-ba18-b1cc47471dca",
+            "a13ef2e3-d4ad-40ff-b494-67c82fc8100c",
+            "b9b7a52a-37a0-49ee-bd6d-929b9af2077a"
+          ],
+          "order": 3
+        },
+        {
+          "id": "a1234214-8ea1-424b-b229-0ccf47a3c235",
+          "name": "super corazones para los desarrolladores",
+          "description": "aqui se envian supercorazones a los desarrolladores, y tambien se conoce mas sobre ellos.",
+          "parentId": "f1967031-2f4b-421b-9e27-a1119d02fa15",
+          "associatedFeatures": [
+            "b0bb25a6-1c59-49fd-9dec-d93161b3dacf"
+          ],
+          "order": 4
+        }
+      ]
+    },
+    "logic": {
+      "projectId": "1620239b-0756-4c0f-8c37-830dc9424bd7",
+      "blocks": [
+        {
+          "id": "6c15513a-8e45-4b7c-a0d4-102ff875b549",
+          "type": "data-rule",
+          "title": "real time",
+          "content": "todo lo que se renderiza en tiempo real no se manejara por websokects sino que se manejara con portal",
+          "status": "defined"
+        },
+        {
+          "id": "7bddd12d-78cd-454f-9631-b0a18d78a0e4",
+          "type": "user-flow",
+          "title": "estilo balatro",
+          "content": "el usuario puede interactuar con casi todo en el escenario. las cartas son reactivas a pasar el cursor del mause por encima y revela el noombre y la descripcion en un cuadro que sigue al cursor mientras esta encima del comodin. ",
+          "status": "defined"
+        },
+        {
+          "id": "a67d1af7-56b3-426c-b737-60eee338e78f",
+          "type": "business-rule",
+          "title": "comodines",
+          "content": "todos los comodines tienen que tener, titulo, descripcion, rareza y diseño",
+          "status": "defined"
+        }
+      ]
+    },
+    "stack": {
+      "projectId": "1620239b-0756-4c0f-8c37-830dc9424bd7",
+      "categories": [
+        {
+          "key": "frontend",
+          "label": "stack.category.frontend",
+          "choice": "React",
+          "justification": "react + vite por que se levanta en milisegundos."
+        },
+        {
+          "key": "backend",
+          "label": "stack.category.backend",
+          "choice": "Node.js",
+          "justification": "por que usaremos portal para manejar los estados y no escribir los websockets y renderizar todo en realtime"
+        },
+        {
+          "key": "database",
+          "label": "stack.category.database",
+          "choice": "Neon",
+          "justification": "por que usaremos posgresSQL"
+        },
+        {
+          "key": "auth",
+          "label": "stack.category.auth",
+          "choice": "Firebase Auth",
+          "justification": "por qeu es mas facil integrar este microservicio en react ademas de que maneja los inicios de sesion de google."
+        },
+        {
+          "key": "infra",
+          "label": "stack.category.infra",
+          "choice": "Vercel",
+          "justification": "por que usaremos react y vite. se desplegara en segundos."
+        },
+        {
+          "key": "services",
+          "label": "stack.category.services",
+          "choice": "portal",
+          "justification": "para manejar datos en realtime en la pagina y no escribir websockets owo\ndocuementacion: https://docs.useportal.co/"
+        },
+        {
+          "key": "libraries",
+          "label": "stack.category.libraries",
+          "choice": "framer-motion, @floating-ui/react, lucide-react, react-tsparticles (con tsparticles), react-canvas-confetti, framer-motion,  tailwindcss, clsx + tailwind-merge, chess.js,  react-chessboard",
+          "justification": "⚡ 1. El Motor Principal (Frontend)\nReact + Vite: La velocidad de desarrollo es prioridad. Vite levanta el proyecto y compila los cambios en milisegundos, dejándote iterar rapidísimo. React aporta un ecosistema masivo de herramientas listas para usar, ideal para construir interfaces complejas y reactivas.\n\n🌐 2. Multijugador y Backend (El Corazón del Juego)\nNode.js + Portal (useportal.co): La joya de la corona. En lugar de perder horas escribiendo, gestionando y depurando conexiones WebSocket manuales, Portal maneja el estado compartido en tiempo real. Esto permite sincronizar las dimensiones, los relojes y los comodines entre los jugadores de forma fluida y sin fricción.\n\n🗄️ 3. Datos, Autenticación y Despliegue\nNeon (PostgreSQL): Una base de datos serverless rapidísima y moderna, perfecta para guardar los perfiles, las estadísticas y hacer funcionar la tabla de clasificación.\n\nFirebase Auth: La vía más rápida y segura para integrar inicios de sesión (especialmente con Google) directamente como un microservicio en React, sin programar sistemas de contraseñas desde cero.\n\nVercel: Despliegue instantáneo. Empujas tu código y en segundos la aplicación está en vivo para que cualquiera pueda probar la landing page y entrar a jugar.\n\n♟️ 4. La Lógica de Ajedrez\nchess.js: El \"cerebro\" matemático. Se encarga de validar jaques, jaque mates y movimientos legales base, permitiéndote enfocarte en programar solo las excepciones mágicas (el Interceptor de reglas).\n\nreact-chessboard: Te regala un tablero funcional con físicas de arrastrar y soltar (drag and drop). Y como ya tienes tus propios SVGs de pixel art, puedes inyectarlos aquí fácilmente para darle esa identidad única al juego.\n\n🎨 5. El \"Jugo\" (Juice & Game Feel)\nTailwind CSS: Estilos ultrarrápidos. Ideal para darle colores relucientes (bronce, plata, oro) a la tabla de clasificación y manejar los estados visuales sin salir de tus archivos de React.\n\nFramer Motion: Responsable de la magia pura. Dará ese efecto táctil estilo Balatro a las cartas, inclinándolas en 3D al pasar el cursor, y animará los emojis que manden los espectadores en tiempo real.\n\n@floating-ui/react: Controla los cuadros de texto descriptivos para que sigan suavemente al cursor cuando un jugador inspeccione un comodín.\n\nreact-tsparticles / react-canvas-confetti: Efectos visuales de impacto. Niebla para la dimensión Bluriel, alteraciones visuales en la gravedad, y explosiones cuando la Supernova queme casillas en el tablero."
+        }
+      ]
+    },
+    "identity": {
+      "projectId": "1620239b-0756-4c0f-8c37-830dc9424bd7",
+      "finalName": "RogueChess",
+      "nameVariants": [],
+      "colors": [],
+      "typography": [
+        {
+          "id": "5a7c2368-5dee-413a-9ea1-2bfb26621bb0",
+          "fontFamily": "retro",
+          "role": "headings",
+          "previewText": ""
+        },
+        {
+          "id": "f6aee232-2ee6-4dfb-8830-a74e3b2b3959",
+          "fontFamily": "Courier New",
+          "role": "body",
+          "previewText": ""
+        }
+      ],
+      "toneAdjectives": [
+        "friendly",
+        "fun",
+        "minimalist"
+      ],
+      "toneDescription": "",
+      "visualReferences": [],
+      "logoConcept": "",
+      "logoSketch": "data:image/png;base64,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"
+    },
+    "roadmap": {
+      "projectId": "1620239b-0756-4c0f-8c37-830dc9424bd7",
+      "phases": [
+        {
+          "id": "57502750-11c0-4788-a5b1-61b9bff40652",
+          "name": "fase de interfaz de cosas fundamentales",
+          "objective": "hacer la navegacion de las interfaces de usuario",
+          "featureIds": [
+            "419a4dd1-6ffa-4b17-a2fa-2c20eb6fadb1",
+            "08de54d3-1cc3-465f-8ce1-646ce314b022",
+            "8982612c-79f9-497c-9857-5c214ddc2257",
+            "b9b7a52a-37a0-49ee-bd6d-929b9af2077a",
+            "a13ef2e3-d4ad-40ff-b494-67c82fc8100c",
+            "6d4f9626-ac13-48d6-ba18-b1cc47471dca",
+            "b0bb25a6-1c59-49fd-9dec-d93161b3dacf"
+          ],
+          "durationWeeks": 0,
+          "successCriteria": "cuando todo funcione",
+          "order": 0
+        },
+        {
+          "id": "929458c5-14e5-4532-ac20-cc633b856d33",
+          "name": "Partida rapida",
+          "objective": "hacer el ajedrez",
+          "featureIds": [
+            "85ca482a-b209-4eda-a896-f8eed67f43df",
+            "ad97ebcf-74f8-4749-8e03-78aff730d95e",
+            "0a3f47dc-f9bb-4e96-8205-18ecf9ea6c6c",
+            "10193780-c3e5-4e76-8b1c-2629a21d45ef",
+            "28943b74-8a01-4f6e-a314-c9932d3dc9a4",
+            "6bafceec-6ade-4e89-8f10-078d309657aa",
+            "27dd4756-8b55-4e4f-af20-81f459a6aa33",
+            "e9965951-4700-4161-ad56-5442051ccad7"
+          ],
+          "durationWeeks": 0,
+          "successCriteria": "cuando todo funcione",
+          "order": 1
+        },
+        {
+          "id": "cb7377fb-f504-4ded-9118-17b302ef7803",
+          "name": "Gobalidades",
+          "objective": "ajustes y integración de otras cosas",
+          "featureIds": [
+            "b363b9f9-d137-4daa-8e09-9785f42a44d2",
+            "6d229c75-d57e-422f-b5d6-dcc74366b925"
+          ],
+          "durationWeeks": 0,
+          "successCriteria": "cuando todo funcione",
+          "order": 2
+        },
+        {
+          "id": "0184b47d-be9e-4933-965b-63b0a7bdc824",
+          "name": "partida personalizada",
+          "objective": "",
+          "featureIds": [
+            "0eea23f1-db8b-47f1-b410-841929df5ab7"
+          ],
+          "durationWeeks": 0,
+          "successCriteria": "cuando todo funcione",
+          "order": 3
+        }
+      ]
+    },
+    "prototyping": null
+  }
+}

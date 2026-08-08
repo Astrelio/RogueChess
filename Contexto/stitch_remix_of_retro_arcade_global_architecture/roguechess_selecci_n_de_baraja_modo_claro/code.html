@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Deck Selection - RogueChess</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Libre+Caslon+Text:ital,wght@0,400;0,700;1,400&amp;family=Space+Grotesk:wght@300..700&amp;family=Work+Sans:ital,wght@0,100..900;1,100..900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "background": "#faf9f4",
+                      "on-primary-container": "#554300",
+                      "on-background": "#1b1c19",
+                      "on-secondary-fixed-variant": "#474747",
+                      "surface-bright": "#faf9f4",
+                      "surface-tint": "#735c00",
+                      "primary-fixed": "#ffe088",
+                      "on-secondary-fixed": "#1b1c1c",
+                      "surface-dim": "#dbdad5",
+                      "secondary-container": "#e4e2e1",
+                      "inverse-on-surface": "#f2f1ec",
+                      "primary": "#735c00",
+                      "on-tertiary-fixed": "#00174b",
+                      "secondary": "#5f5e5e",
+                      "inverse-primary": "#e9c349",
+                      "outline": "#7f7663",
+                      "tertiary-container": "#97b0ff",
+                      "surface-container-low": "#f5f4ef",
+                      "primary-fixed-dim": "#e9c349",
+                      "surface-variant": "#e3e3de",
+                      "primary-container": "#d4af37",
+                      "on-error-container": "#93000a",
+                      "on-surface-variant": "#4d4635",
+                      "on-primary-fixed": "#241a00",
+                      "on-tertiary": "#ffffff",
+                      "outline-variant": "#d0c5af",
+                      "surface-container": "#efeee9",
+                      "on-error": "#ffffff",
+                      "on-tertiary-fixed-variant": "#27438a",
+                      "secondary-fixed": "#e4e2e1",
+                      "tertiary": "#415ba4",
+                      "secondary-fixed-dim": "#c8c6c5",
+                      "error": "#ba1a1a",
+                      "tertiary-fixed-dim": "#b4c5ff",
+                      "on-primary": "#ffffff",
+                      "on-secondary-container": "#656464",
+                      "inverse-surface": "#30312e",
+                      "error-container": "#ffdad6",
+                      "on-primary-fixed-variant": "#574500",
+                      "on-secondary": "#ffffff",
+                      "surface": "#faf9f4",
+                      "surface-container-highest": "#e3e3de",
+                      "on-surface": "#1b1c19",
+                      "surface-container-high": "#e9e8e3",
+                      "surface-container-lowest": "#ffffff",
+                      "on-tertiary-container": "#254188",
+                      "tertiary-fixed": "#dbe1ff"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.125rem",
+                      "lg": "0.25rem",
+                      "xl": "0.5rem",
+                      "full": "0.75rem"
+              },
+              "spacing": {
+                      "container-padding": "32px",
+                      "margin-desktop": "64px",
+                      "base": "8px",
+                      "margin-mobile": "16px",
+                      "gutter": "24px"
+              },
+              "fontFamily": {
+                      "display-lg": [
+                              "Libre Caslon Text"
+                      ],
+                      "label-sm": [
+                              "Space Grotesk"
+                      ],
+                      "headline-lg-mobile": [
+                              "Libre Caslon Text"
+                      ],
+                      "body-md": [
+                              "Work Sans"
+                      ],
+                      "headline-lg": [
+                              "Libre Caslon Text"
+                      ]
+              },
+              "fontSize": {
+                      "display-lg": [
+                              "48px",
+                              {
+                                      "lineHeight": "56px",
+                                      "letterSpacing": "-0.02em",
+                                      "fontWeight": "700"
+                              }
+                      ],
+                      "label-sm": [
+                              "12px",
+                              {
+                                      "lineHeight": "16px",
+                                      "letterSpacing": "0.05em",
+                                      "fontWeight": "500"
+                              }
+                      ],
+                      "headline-lg-mobile": [
+                              "24px",
+                              {
+                                      "lineHeight": "32px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "body-md": [
+                              "16px",
+                              {
+                                      "lineHeight": "24px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "headline-lg": [
+                              "32px",
+                              {
+                                      "lineHeight": "40px",
+                                      "fontWeight": "600"
+                              }
+                      ]
+              }
+      },
+          },
+        }
+      </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings:
+            'FILL' 1,
+            'wght' 400,
+            'GRAD' 0,
+            'opsz' 24;
+        }
+        
+        .frosted-ivory {
+            background-color: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(12px);
+        }
+
+        .gold-shadow {
+            box-shadow: 0 20px 20px rgba(115, 92, 0, 0.04);
+        }
+        
+        /* Card hover effects */
+        .deck-card {
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        
+        .deck-card:hover, .deck-card.selected {
+            transform: translateY(-8px) scale(1.02);
+            box-shadow: 0 24px 40px rgba(115, 92, 0, 0.08);
+            border-color: theme('colors.primary');
+        }
+        
+        .deck-card.selected::after {
+            content: '';
+            position: absolute;
+            inset: -2px;
+            border: 2px solid theme('colors.primary');
+            border-radius: inherit;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .deck-card-content {
+            transition: opacity 0.3s ease;
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background min-h-screen flex flex-col relative overflow-x-hidden selection:bg-primary-container selection:text-on-primary-container">
+<!-- Subtle texture overlay -->
+<div class="fixed inset-0 pointer-events-none opacity-5 z-0" style="background-image: url('data:image/svg+xml,%3Csvg width=\'100\' height=\'100\' viewBox=\'0 0 100 100\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'noise\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.8\' numOctaves=\'4\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100\' height=\'100\' filter=\'url(%23noise)\'/%3E%3C/svg%3E');"></div>
+<!-- Main Content -->
+<main class="flex-1 flex flex-col relative z-10 pt-24 pb-32 px-margin-mobile md:px-margin-desktop w-full max-w-[1440px] mx-auto">
+<!-- Header -->
+<header class="text-center mb-16 max-w-3xl mx-auto">
+<h1 class="font-display-lg text-headline-lg-mobile md:text-display-lg text-primary mb-6">Forge your Strategy</h1>
+<p class="font-body-md text-body-md text-on-surface-variant max-w-xl mx-auto">Select a primary tactical paradigm for your upcoming engagement. Each deck dictates your foundational abilities and temporal constraints.</p>
+</header>
+<!-- Deck Selection Grid -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-gutter lg:gap-12 relative z-10 max-w-6xl mx-auto w-full">
+<!-- Deck 1: Spectral -->
+<button class="deck-card group relative text-left rounded-xl frosted-ivory border-t border-outline-variant/50 gold-shadow overflow-hidden flex flex-col h-full focus:outline-none" onclick="selectDeck(this)">
+<!-- Card Art Placeholder -->
+<div class="h-48 w-full relative overflow-hidden bg-surface-container-high shrink-0">
+<img class="w-full h-full object-cover mix-blend-multiply opacity-80 group-hover:scale-105 transition-transform duration-700 ease-out" data-alt="A tactical, high-end illustration of a ghostly, spectral chess piece, specifically a knight, surrounded by a subtle aura of purple and white ethereal mist. The style is reminiscent of a premium physical trading card illustration with a tactile, academic minimalism aesthetic. Soft, diffuse lighting." src="https://lh3.googleusercontent.com/aida-public/AB6AXuC7_G3HfAJebyzPgj8WsYzc6iDwvMJBfusW5YnvoIv915F4ed9dTCgDub1nVflkxLX3n4tc0PD894YHPoSQ7in5hFh1093l7z8vRv8cJX8MEW-TTxtyeQPivWqJ1ghf56H4SquJ3Vymxq3VXM0tUI3T7rsEkLaz-A9Lu0lLPlIifrtMtuCo1gOoHZCFTv6bmPHKrCFyXLf5jkCVo7ztwD-_fVfUOk2ZSbf3ywpUZtY2kwhTnTntb_SBcQ"/>
+<div class="absolute inset-0 bg-gradient-to-t from-background to-transparent"></div>
+<div class="absolute top-4 right-4 bg-tertiary-container/20 text-on-background font-label-sm text-label-sm px-3 py-1 rounded-full backdrop-blur-sm border border-outline-variant/30">
+                        Evasive
+                    </div>
+</div>
+<div class="p-8 flex flex-col flex-1 relative z-10">
+<h2 class="font-headline-lg text-headline-lg text-on-background mb-2">Spectral</h2>
+<p class="font-body-md text-body-md text-on-surface-variant mb-6 border-b border-outline-variant/30 pb-4">Mastery over phasing and indirect assault. High mobility, moderate damage.</p>
+<ul class="space-y-4 flex-1">
+<li class="flex items-start gap-4">
+<span class="material-symbols-outlined text-outline mt-1" data-icon="visibility_off" data-weight="fill">visibility_off</span>
+<div>
+<h3 class="font-label-sm text-label-sm text-on-background mb-1">Phase Shift</h3>
+<p class="font-body-md text-body-md text-secondary text-sm">Unit becomes untargetable for 1 turn.</p>
+</div>
+<span class="font-label-sm text-label-sm text-primary ml-auto mt-1 whitespace-nowrap">2t</span>
+</li>
+<li class="flex items-start gap-4">
+<span class="material-symbols-outlined text-outline mt-1" data-icon="switch_access_shortcut" data-weight="fill">switch_access_shortcut</span>
+<div>
+<h3 class="font-label-sm text-label-sm text-on-background mb-1">Apparition Strike</h3>
+<p class="font-body-md text-body-md text-secondary text-sm">Attack through one piece.</p>
+</div>
+<span class="font-label-sm text-label-sm text-primary ml-auto mt-1 whitespace-nowrap">3t</span>
+</li>
+<li class="flex items-start gap-4">
+<span class="material-symbols-outlined text-outline mt-1" data-icon="blur_on" data-weight="fill">blur_on</span>
+<div>
+<h3 class="font-label-sm text-label-sm text-on-background mb-1">Haunt</h3>
+<p class="font-body-md text-body-md text-secondary text-sm">Reduce enemy movement range.</p>
+</div>
+<span class="font-label-sm text-label-sm text-primary ml-auto mt-1 whitespace-nowrap">1t</span>
+</li>
+<li class="flex items-start gap-4">
+<span class="material-symbols-outlined text-outline mt-1" data-icon="change_history" data-weight="fill">change_history</span>
+<div>
+<h3 class="font-label-sm text-label-sm text-on-background mb-1">Ethereal Form</h3>
+<p class="font-body-md text-body-md text-secondary text-sm">Convert piece to spectral type permanently.</p>
+</div>
+<span class="font-label-sm text-label-sm text-primary ml-auto mt-1 whitespace-nowrap">5t</span>
+</li>
+</ul>
+</div>
+</button>
+<!-- Deck 2: Antimatter -->
+<button class="deck-card group relative text-left rounded-xl frosted-ivory border-t border-outline-variant/50 gold-shadow overflow-hidden flex flex-col h-full focus:outline-none" onclick="selectDeck(this)">
+<!-- Card Art Placeholder -->
+<div class="h-48 w-full relative overflow-hidden bg-surface-container-high shrink-0">
+<img class="w-full h-full object-cover mix-blend-multiply opacity-80 group-hover:scale-105 transition-transform duration-700 ease-out" data-alt="A tactical, high-end illustration of a powerful, aggressive chess piece, specifically a rook, amidst subtle explosions of red and orange energy representing antimatter. The style is reminiscent of a premium physical trading card illustration with a tactile, academic minimalism aesthetic. Sharp, dramatic lighting on a light background." src="https://lh3.googleusercontent.com/aida-public/AB6AXuA355FGJu4rFVxqElARzpqsffnv_JoYCAwc4-GaVhQ5nmMbbVURYSNsgqp5MH3lC2l8pNnyf4giZLrxxXvXpgl5bRVP-VYvrwyiXBvBNnsub763vETqajfDJMeeVHG5o36ty2GpUhBXUxgAcUsNRpHhJ1LSchLxOdHKSngC0Zh8UplSwAfO9-0H1OvpNpOw23I2h35hZgq6Tp_O0moryalOFOMS_hl0qwsovwisKckP-lPSAKwa8kmXYw"/>
+<div class="absolute inset-0 bg-gradient-to-t from-background to-transparent"></div>
+<div class="absolute top-4 right-4 bg-error-container/20 text-on-background font-label-sm text-label-sm px-3 py-1 rounded-full backdrop-blur-sm border border-outline-variant/30">
+                        Aggressive
+                    </div>
+</div>
+<div class="p-8 flex flex-col flex-1 relative z-10">
+<h2 class="font-headline-lg text-headline-lg text-on-background mb-2">Antimatter</h2>
+<p class="font-body-md text-body-md text-on-surface-variant mb-6 border-b border-outline-variant/30 pb-4">Devastating raw power and area control. High damage, high risk.</p>
+<ul class="space-y-4 flex-1">
+<li class="flex items-start gap-4">
+<span class="material-symbols-outlined text-outline mt-1" data-icon="explosion" data-weight="fill">explosion</span>
+<div>
+<h3 class="font-label-sm text-label-sm text-on-background mb-1">Annihilation Radius</h3>
+<p class="font-body-md text-body-md text-secondary text-sm">Destroy units in a 3x3 grid.</p>
+</div>
+<span class="font-label-sm text-label-sm text-primary ml-auto mt-1 whitespace-nowrap">6t</span>
+</li>
+<li class="flex items-start gap-4">
+<span class="material-symbols-outlined text-outline mt-1" data-icon="line_weight" data-weight="fill">line_weight</span>
+<div>
+<h3 class="font-label-sm text-label-sm text-on-background mb-1">Matter Collapse</h3>
+<p class="font-body-md text-body-md text-secondary text-sm">Remove a square from the board.</p>
+</div>
+<span class="font-label-sm text-label-sm text-primary ml-auto mt-1 whitespace-nowrap">4t</span>
+</li>
+<li class="flex items-start gap-4">
+<span class="material-symbols-outlined text-outline mt-1" data-icon="electric_bolt" data-weight="fill">electric_bolt</span>
+<div>
+<h3 class="font-label-sm text-label-sm text-on-background mb-1">Kinetic Overload</h3>
+<p class="font-body-md text-body-md text-secondary text-sm">Double damage for one attack.</p>
+</div>
+<span class="font-label-sm text-label-sm text-primary ml-auto mt-1 whitespace-nowrap">2t</span>
+</li>
+<li class="flex items-start gap-4">
+<span class="material-symbols-outlined text-outline mt-1" data-icon="warning" data-weight="fill">warning</span>
+<div>
+<h3 class="font-label-sm text-label-sm text-on-background mb-1">Volatile Core</h3>
+<p class="font-body-md text-body-md text-secondary text-sm">Sacrifice unit for AoE damage.</p>
+</div>
+<span class="font-label-sm text-label-sm text-primary ml-auto mt-1 whitespace-nowrap">1t</span>
+</li>
+</ul>
+</div>
+</button>
+<!-- Deck 3: Tempus -->
+<button class="deck-card group relative text-left rounded-xl frosted-ivory border-t border-outline-variant/50 gold-shadow overflow-hidden flex flex-col h-full focus:outline-none" onclick="selectDeck(this)">
+<!-- Card Art Placeholder -->
+<div class="h-48 w-full relative overflow-hidden bg-surface-container-high shrink-0">
+<img class="w-full h-full object-cover mix-blend-multiply opacity-80 group-hover:scale-105 transition-transform duration-700 ease-out" data-alt="A tactical, high-end illustration of an intricate, clockwork chess piece, specifically a bishop, surrounded by subtle cyan and blue geometric lines suggesting time manipulation. The style is reminiscent of a premium physical trading card illustration with a tactile, academic minimalism aesthetic. Crisp, analytical lighting." src="https://lh3.googleusercontent.com/aida-public/AB6AXuABoF2rhMvLJCCRbdWtCOU2A7-wxMFpt0zVjB6ssEXJtD1QGFbfx-jQaXyB0QVaSqVWU_FZN2iXyY1OI3ZDIOf4qxS52XMsnhLWiYTeeepdwHpAMRhTDVXShem4Oadycuf9GgFlogbrobw-HF18XVJvLTgz2tmGBSXjUMEhiccZxTNxIRgh6lo7B5Boj2_5AC0NVhZbN-AbV8iS8H2P5zFi4CsH2UgCsIm58EofUTxLUX4o6pEN9Np3xg"/>
+<div class="absolute inset-0 bg-gradient-to-t from-background to-transparent"></div>
+<div class="absolute top-4 right-4 bg-primary-container/20 text-on-background font-label-sm text-label-sm px-3 py-1 rounded-full backdrop-blur-sm border border-outline-variant/30">
+                        Control
+                    </div>
+</div>
+<div class="p-8 flex flex-col flex-1 relative z-10">
+<h2 class="font-headline-lg text-headline-lg text-on-background mb-2">Tempus</h2>
+<p class="font-body-md text-body-md text-on-surface-variant mb-6 border-b border-outline-variant/30 pb-4">Manipulation of turn order and flow. High utility, complex execution.</p>
+<ul class="space-y-4 flex-1">
+<li class="flex items-start gap-4">
+<span class="material-symbols-outlined text-outline mt-1" data-icon="history" data-weight="fill">history</span>
+<div>
+<h3 class="font-label-sm text-label-sm text-on-background mb-1">Chronos Shift</h3>
+<p class="font-body-md text-body-md text-secondary text-sm">Undo opponent's last move.</p>
+</div>
+<span class="font-label-sm text-label-sm text-primary ml-auto mt-1 whitespace-nowrap">5t</span>
+</li>
+<li class="flex items-start gap-4">
+<span class="material-symbols-outlined text-outline mt-1" data-icon="hourglass_empty" data-weight="fill">hourglass_empty</span>
+<div>
+<h3 class="font-label-sm text-label-sm text-on-background mb-1">Stasis Field</h3>
+<p class="font-body-md text-body-md text-secondary text-sm">Freeze a 2x2 area for 2 turns.</p>
+</div>
+<span class="font-label-sm text-label-sm text-primary ml-auto mt-1 whitespace-nowrap">4t</span>
+</li>
+<li class="flex items-start gap-4">
+<span class="material-symbols-outlined text-outline mt-1" data-icon="fast_forward" data-weight="fill">fast_forward</span>
+<div>
+<h3 class="font-label-sm text-label-sm text-on-background mb-1">Accelerate</h3>
+<p class="font-body-md text-body-md text-secondary text-sm">Grant unit an extra action this turn.</p>
+</div>
+<span class="font-label-sm text-label-sm text-primary ml-auto mt-1 whitespace-nowrap">3t</span>
+</li>
+<li class="flex items-start gap-4">
+<span class="material-symbols-outlined text-outline mt-1" data-icon="sync" data-weight="fill">sync</span>
+<div>
+<h3 class="font-label-sm text-label-sm text-on-background mb-1">Temporal Loop</h3>
+<p class="font-body-md text-body-md text-secondary text-sm">Reset unit to previous turn's position.</p>
+</div>
+<span class="font-label-sm text-label-sm text-primary ml-auto mt-1 whitespace-nowrap">2t</span>
+</li>
+</ul>
+</div>
+</button>
+</div>
+<!-- Sticky Footer Action -->
+<div class="fixed bottom-0 left-0 w-full p-6 frosted-ivory border-t border-outline-variant/30 flex justify-center z-50 transform translate-y-full transition-transform duration-300" id="actionFooter">
+<button class="bg-on-background text-primary font-label-sm text-label-sm uppercase tracking-wider px-12 py-4 rounded-full hover:bg-surface-tint hover:text-on-primary transition-colors flex items-center gap-3">
+                Confirm Selection
+                <span class="material-symbols-outlined" data-icon="arrow_forward">arrow_forward</span>
+</button>
+</div>
+</main>
+<script>
+        function selectDeck(clickedElement) {
+            // Remove selected class from all cards
+            document.querySelectorAll('.deck-card').forEach(card => {
+                card.classList.remove('selected');
+            });
+            
+            // Add selected class to clicked card
+            clickedElement.classList.add('selected');
+            
+            // Show action footer
+            document.getElementById('actionFooter').classList.remove('translate-y-full');
+        }
+    </script>
+</body></html>
