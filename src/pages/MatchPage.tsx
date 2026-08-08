@@ -15,7 +15,10 @@ import {
 } from '@/lib/jokerTargets'
 import { JokerCard } from '@/components/jokers/JokerCard'
 import { JokerTargetBanner } from '@/components/match/JokerTargetBanner'
+import { InstantJokerFx } from '@/components/match/InstantJokerFx'
+import { MatchToast } from '@/components/match/MatchToast'
 import { MatchPortalBridge, type MatchPortalPeerInfo } from '@/components/match/MatchPortalBridge'
+import { ShopIntroOverlay } from '@/components/match/ShopIntroOverlay'
 import { ShopPhaseModal, ShopWaitOverlay } from '@/components/match/ShopPhaseModal'
 import { VictoryOverlay } from '@/components/match/VictoryOverlay'
 import { PageTransition } from '@/components/PageTransition'
@@ -28,6 +31,12 @@ import {
 } from '@/lib/portal'
 import { previewAparicionFen, previewMorsmordreFen, previewRemovePieceFen } from '@/lib/jokerOptimistic'
 import { fenHideEnemyInvisible } from '@/lib/invisibleFen'
+import {
+  indicatorStyle,
+  jokerTargetSquares,
+  legalInteractionSquares,
+  ownInvisibleSquares,
+} from '@/lib/boardIndicators'
 import { isPhaseTransition, isStaleBoardPulse, isStaleMatchState } from '@/lib/matchFreshness'
 import { useLiveClocks } from '@/hooks/useLiveClocks'
 import type { MatchState, Joker, MatchPlayer, PieceFlag } from '@/types/match'
@@ -75,15 +84,44 @@ function formatMs(ms: number) {
   return `${m}:${r.toString().padStart(2, '0')}`
 }
 
-const dimLabel: Record<string, string> = {
-  primo: 'Tablero Primo',
-  espejo: 'Espejo',
-  bluriel: 'Bluriel',
-  gravitacional: 'Gravitacional',
-  cadena_sangre: 'Cadena de Sangre',
-  ruina: 'Ruina',
-  mercado_negro: 'Mercado Negro',
-  fragilidad: 'Fragilidad',
+const dimInfo: Record<string, { name: string; description: string }> = {
+  primo: {
+    name: 'Tablero Primo',
+    description: 'Ajedrez clásico sin anomalías. Primera fase de cada partida.',
+  },
+  espejo: {
+    name: 'Dimensión Espejo',
+    description:
+      'Ejes de movimiento invertidos. Peones van hacia tu propia fila y pueden coronar ahí. Enroque: comando invertido, posición final clásica.',
+  },
+  bluriel: {
+    name: 'Dimensión Bluriel',
+    description: 'Tras mover, tus piezas se vuelven borrosas/invisibles al rival. El jaque siempre se anuncia.',
+  },
+  gravitacional: {
+    name: 'Dimensión Gravitacional',
+    description: 'Piezas de largo alcance (Q, R, B) máximo 3 casillas. Sin jaque ni pins más allá de 3.',
+  },
+  cadena_sangre: {
+    name: 'Cadena de Sangre',
+    description:
+      'Si hay captura legal disponible, es obligatoria. Exento si la captura deja al rey en jaque.',
+  },
+  ruina: {
+    name: 'Dimensión Ruina',
+    description:
+      'Casillas donde hubo captura quedan destruidas. Deslizantes no atraviesan; caballos pueden saltar a casilla sana.',
+  },
+  mercado_negro: {
+    name: 'El Mercado Negro',
+    description:
+      '4 monolitos de tiempo (+40–60s). Ocupar o atravesar otorga tiempo. Capturas dan hasta +15s. Spawn sobre pieza: absorbe y desaparece.',
+  },
+  fragilidad: {
+    name: 'Dimensión Fragilidad',
+    description:
+      'Si una pieza (no rey) queda amenazada por dos enemigos al final del turno, se destruye. El rey es inmune.',
+  },
 }
 
 export function MatchPage() {
@@ -118,6 +156,8 @@ export function MatchPage() {
   const [remoteDrag, setRemoteDrag] = useState<PieceDragPayload | null>(null)
   const [optimisticFen, setOptimisticFen] = useState<string | null>(null)
   const [aim, setAim] = useState<JokerAim | null>(null)
+  /** Pieza seleccionada para click-to-move + indicadores de destinos. */
+  const [selectedSquare, setSelectedSquare] = useState<string | null>(null)
   const [justBoughtOfferId, setJustBoughtOfferId] = useState<string | null>(null)
   const [justBoughtInventoryId, setJustBoughtInventoryId] = useState<string | null>(null)
   const [shopPeek, setShopPeek] = useState(false)
@@ -129,6 +169,10 @@ export function MatchPage() {
     kind: 'swap' | 'vanish'
   } | null>(null)
   const boardFxTimer = useRef<number | null>(null)
+  const [instantFx, setInstantFx] = useState<{ code: string; name: string } | null>(null)
+  const instantFxTimer = useRef<number | null>(null)
+  const [shopIntroDone, setShopIntroDone] = useState(false)
+  const shopIntroCycleRef = useRef<number | null>(null)
 
   const flashBoardFx = useCallback((squares: string[], kind: 'swap' | 'vanish') => {
     if (boardFxTimer.current != null) window.clearTimeout(boardFxTimer.current)
@@ -138,6 +182,26 @@ export function MatchPage() {
       boardFxTimer.current = null
     }, kind === 'swap' ? 600 : 480)
   }, [])
+
+  const flashInstantJoker = useCallback((code: string, name: string) => {
+    if (instantFxTimer.current != null) window.clearTimeout(instantFxTimer.current)
+    setInstantFx({ code, name })
+    instantFxTimer.current = window.setTimeout(() => {
+      setInstantFx(null)
+      instantFxTimer.current = null
+    }, 1000)
+  }, [])
+
+  const finishShopIntro = useCallback(() => {
+    setShopIntroDone(true)
+  }, [])
+
+  // Errores / ilegales: toast corto y auto-dismiss
+  useEffect(() => {
+    if (!error) return
+    const t = window.setTimeout(() => setError(null), 2800)
+    return () => window.clearTimeout(t)
+  }, [error])
 
   /** Watermarks anti-eco / anti-carrera Portal + REST. */
   const lastBoardAtRef = useRef(0)
@@ -426,6 +490,23 @@ export function MatchPage() {
   const isWaitingRival = match?.status === 'waiting'
   const isFinished = match?.status === 'finished'
   const yourTurn = Boolean(you && match && match.status === 'active' && match.turn_color === you.color)
+
+  // Intro “Elige tus comodines” al abrir cada ciclo de mercado
+  useEffect(() => {
+    if (!inShopPhase || isFinished) {
+      setShopIntroDone(false)
+      shopIntroCycleRef.current = null
+      return
+    }
+    const cycle = match?.cycle_index ?? 0
+    if (shopIntroCycleRef.current !== cycle) {
+      shopIntroCycleRef.current = cycle
+      setShopIntroDone(false)
+    }
+  }, [inShopPhase, isFinished, match?.cycle_index])
+
+  const showShopIntro = isShop && !isFinished && !shopIntroDone
+  const showShopModal = isShop && !isFinished && shopIntroDone
   const clocks = useLiveClocks(match, state?.players)
   const timeoutClaimed = useRef(false)
   const shopTimeoutClaimed = useRef(false)
@@ -544,6 +625,83 @@ export function MatchPage() {
     return fenWithDragPreview(hidden, { from: remoteDrag.from, hover: remoteDrag.hover })
   }, [match, remoteDrag, optimisticFen, state?.flags, you?.color])
 
+  const blockedSquares = useMemo(() => {
+    const set = new Set<string>()
+    for (const c of state?.cells ?? []) {
+      if (c.is_active === false) continue
+      if (c.effect === 'burned' || c.effect === 'ruined') set.add(String(c.square).trim())
+    }
+    return set
+  }, [state?.cells])
+
+  const ghostActive = useMemo(() => {
+    return (state?.effects ?? []).some((e) => {
+      const row = e as { kind?: string; is_active?: boolean; applied_by?: string }
+      return (
+        row.is_active !== false &&
+        row.kind === 'ghost_step' &&
+        row.applied_by === you?.id
+      )
+    })
+  }, [state?.effects, you?.id])
+
+  const moveHints = useMemo(() => {
+    if (aim || !match || !you?.color) return { moves: [] as string[], captures: [] as string[] }
+    const from = selectedSquare
+    if (!from) return { moves: [] as string[], captures: [] as string[] }
+    if (!yourTurn || busy || inShopPhase || isFinished || optimisticFen) {
+      return { moves: [] as string[], captures: [] as string[] }
+    }
+    const youExt = you as MatchPlayer & {
+      giratiempo_active?: boolean
+      giratiempo_captures?: number
+    }
+    return legalInteractionSquares({
+      fen: fenWithSideToMove(match.fen, match.turn_color),
+      from,
+      color: you.color,
+      dimension: match.current_dimension,
+      blocked: blockedSquares,
+      ghostActive,
+      giratiempoBlockCaptures: Boolean(
+        youExt.giratiempo_active && (youExt.giratiempo_captures ?? 0) >= 1,
+      ),
+    })
+  }, [
+    aim,
+    match,
+    you,
+    selectedSquare,
+    yourTurn,
+    busy,
+    inShopPhase,
+    isFinished,
+    optimisticFen,
+    blockedSquares,
+    ghostActive,
+  ])
+
+  const jokerHints = useMemo(() => {
+    if (!aim || !match || !you?.color) {
+      return { hostile: [] as string[], ally: [] as string[], empty: [] as string[] }
+    }
+    return jokerTargetSquares({
+      code: aim.mode.code,
+      fen: fenWithSideToMove(match.fen, match.turn_color),
+      color: you.color,
+      dimension: match.current_dimension,
+      flags: state?.flags,
+      cells: state?.cells,
+      selected: aim.squares,
+      slotIndex: aim.squares.length,
+    })
+  }, [aim, match, you?.color, state?.flags, state?.cells])
+
+  const invisibleHints = useMemo(
+    () => ownInvisibleSquares(state?.flags, you?.color),
+    [state?.flags, you?.color],
+  )
+
   const dragSquareStyles = useMemo(() => {
     const styles: Record<string, React.CSSProperties> = {}
 
@@ -577,13 +735,30 @@ export function MatchPage() {
       }
     }
 
-    if (remoteDrag?.active) {
-      styles[remoteDrag.from] = { backgroundColor: 'rgba(115, 92, 0, 0.28)' }
-      if (remoteDrag.hover && remoteDrag.hover !== remoteDrag.from) {
-        styles[remoteDrag.hover] = { backgroundColor: 'rgba(212, 175, 55, 0.45)' }
-      }
+    // Piezas propias invisibles (capa) — siempre visibles para ti
+    for (const sq of invisibleHints) {
+      styles[sq] = { ...(styles[sq] ?? {}), ...indicatorStyle('invisible') }
     }
+
+    // Destinos legales (parpadeo a tamaño de casilla)
+    for (const sq of moveHints.moves) {
+      styles[sq] = { ...(styles[sq] ?? {}), ...indicatorStyle('move') }
+    }
+    for (const sq of moveHints.captures) {
+      styles[sq] = { ...(styles[sq] ?? {}), ...indicatorStyle('capture') }
+    }
+
+    // Objetivos de comodín en apuntado
     if (aim) {
+      for (const sq of jokerHints.empty) {
+        styles[sq] = { ...(styles[sq] ?? {}), ...indicatorStyle('joker_empty') }
+      }
+      for (const sq of jokerHints.ally) {
+        styles[sq] = { ...(styles[sq] ?? {}), ...indicatorStyle('joker_ally') }
+      }
+      for (const sq of jokerHints.hostile) {
+        styles[sq] = { ...(styles[sq] ?? {}), ...indicatorStyle('joker_hostile') }
+      }
       aim.squares.forEach((sq, i) => {
         styles[sq] = {
           backgroundColor:
@@ -592,39 +767,67 @@ export function MatchPage() {
         }
       })
     }
+
+    if (selectedSquare && !aim) {
+      styles[selectedSquare] = {
+        ...(styles[selectedSquare] ?? {}),
+        ...indicatorStyle('selected'),
+      }
+    }
+
+    if (remoteDrag?.active) {
+      styles[remoteDrag.from] = {
+        ...(styles[remoteDrag.from] ?? {}),
+        backgroundColor: 'rgba(115, 92, 0, 0.28)',
+      }
+      if (remoteDrag.hover && remoteDrag.hover !== remoteDrag.from) {
+        styles[remoteDrag.hover] = {
+          ...(styles[remoteDrag.hover] ?? {}),
+          backgroundColor: 'rgba(212, 175, 55, 0.45)',
+        }
+      }
+    }
+
     if (boardFx) {
       for (const sq of boardFx.squares) {
         styles[sq] = {
           ...(styles[sq] ?? {}),
-          // className no existe en squareStyles; usamos animationName vía CSS global
           animationName: boardFx.kind === 'swap' ? 'rc-joker-swap' : 'rc-joker-vanish',
           animationDuration: boardFx.kind === 'swap' ? '0.55s' : '0.45s',
           animationTimingFunction: 'ease-out',
           animationFillMode: 'both',
+          animationIterationCount: 1,
         }
       }
     }
     return Object.keys(styles).length ? styles : undefined
-  }, [remoteDrag, aim, state?.cells, boardFx, you?.id])
+  }, [
+    remoteDrag,
+    aim,
+    state?.cells,
+    boardFx,
+    you?.id,
+    invisibleHints,
+    moveHints,
+    jokerHints,
+    selectedSquare,
+  ])
 
-  const blockedSquares = useMemo(() => {
-    const set = new Set<string>()
-    for (const c of state?.cells ?? []) {
-      if (c.is_active === false) continue
-      if (c.effect === 'burned' || c.effect === 'ruined') set.add(String(c.square).trim())
-    }
-    return set
-  }, [state?.cells])
-
-  // Esc cancela el apuntado del comodín
+  // Esc cancela apuntado / selección
   useEffect(() => {
-    if (!aim) return
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') setAim(null)
+      if (e.key !== 'Escape') return
+      if (aim) setAim(null)
+      else setSelectedSquare(null)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [aim])
+
+  // Tablero / fase cambian → limpia selección de pieza
+  useEffect(() => {
+    setSelectedSquare(null)
+  }, [match?.fen, match?.turn_color, inShopPhase, isFinished, aim?.inventoryId])
 
   function endLocalDrag() {
     const d = localDrag.current
@@ -643,6 +846,7 @@ export function MatchPage() {
 
   function startLocalDrag(from: string, piece: string) {
     if (!id) return
+    setSelectedSquare(from)
     localDrag.current = { from, piece }
     publishDragRef.current?.({
       matchId: id,
@@ -653,6 +857,47 @@ export function MatchPage() {
       uid: user?.uid,
       force: true,
     })
+  }
+
+  function onBoardSquareClick(square: string) {
+    if (aim) {
+      onAimSquare(square)
+      return
+    }
+    if (!yourTurn || busy || inShopPhase || isFinished || optimisticFen || !match || !you?.color) {
+      return
+    }
+    const fen = fenWithSideToMove(match.fen, match.turn_color)
+    let chess: Chess
+    try {
+      chess = new Chess(fen)
+    } catch {
+      return
+    }
+    const me = you.color === 'white' ? 'w' : 'b'
+    const piece = chess.get(square as 'a1')
+
+    if (selectedSquare) {
+      if (square === selectedSquare) {
+        setSelectedSquare(null)
+        return
+      }
+      const canMove =
+        moveHints.moves.includes(square) || moveHints.captures.includes(square)
+      if (canMove) {
+        const ok = onPieceDrop({ sourceSquare: selectedSquare, targetSquare: square })
+        if (ok) setSelectedSquare(null)
+        return
+      }
+      if (piece && piece.color === me) {
+        setSelectedSquare(square)
+        return
+      }
+      setSelectedSquare(null)
+      return
+    }
+
+    if (piece && piece.color === me) setSelectedSquare(square)
   }
 
   function hoverLocalDrag(square: string) {
@@ -848,6 +1093,7 @@ export function MatchPage() {
     }
 
     // Optimista LOCAL only — no publicar preview a Portal (ecos viejos reverían piezas)
+    setSelectedSquare(null)
     setOptimisticFen(previewFen)
     setBusy(true)
     setError(null)
@@ -1127,10 +1373,12 @@ export function MatchPage() {
       return
     }
     if (!needsBoardTarget(joker.code)) {
+      flashInstantJoker(joker.code, joker.name)
       void castJoker(inventoryId, {})
       return
     }
     setError(null)
+    setSelectedSquare(null)
     setAim({
       inventoryId,
       jokerName: joker.name,
@@ -1216,6 +1464,14 @@ export function MatchPage() {
   const white = state.players.find((p) => p.color === 'white')
   const black = state.players.find((p) => p.color === 'black')
 
+  // Rival arriba, tú abajo (según orientación del tablero)
+  const myColor: 'white' | 'black' = you?.color === 'black' ? 'black' : 'white'
+  const rivalColor: 'white' | 'black' = myColor === 'white' ? 'black' : 'white'
+  const myPlayer = myColor === 'white' ? white : black
+  const rivalPlayer = rivalColor === 'white' ? white : black
+  const myMs = myColor === 'white' ? clocks.whiteMs : clocks.blackMs
+  const rivalMs = rivalColor === 'white' ? clocks.whiteMs : clocks.blackMs
+
   const youWon = Boolean(you?.profile_id && match.winner_id && match.winner_id === you.profile_id)
   const isDraw = match.result === 'draw' || match.result === 'abort'
   const victoryTitle = isDraw ? 'Tablas' : youWon ? 'Victoria' : 'Derrota'
@@ -1243,10 +1499,34 @@ export function MatchPage() {
   }
 
   return (
-    <PageTransition>
+    <PageTransition className="flex min-h-0 flex-1 flex-col">
       {bridge}
+      <MatchToast
+        message={error}
+        tone="error"
+        className={aim ? '!top-[5.5rem]' : undefined}
+      />
+      {aim ? (
+        <JokerTargetBanner
+          open
+          jokerName={aim.jokerName}
+          mode={aim.mode}
+          selected={aim.squares}
+          onCancel={() => setAim(null)}
+        />
+      ) : null}
+      <InstantJokerFx
+        open={Boolean(instantFx)}
+        code={instantFx?.code ?? ''}
+        name={instantFx?.name ?? ''}
+      />
+      <ShopIntroOverlay
+        open={showShopIntro}
+        cycleIndex={match.cycle_index}
+        onDone={finishShopIntro}
+      />
       <ShopPhaseModal
-        open={isShop && !isFinished}
+        open={showShopModal}
         cycleIndex={match.cycle_index}
         timeMs={yourTimeMs}
         shopLeftMs={shopLeftMs || 60000}
@@ -1279,184 +1559,194 @@ export function MatchPage() {
         onRematch={() => void rematch()}
       />
       <div
-        className={`grid gap-8 lg:grid-cols-[minmax(0,1fr)_280px] ${
+        className={`flex min-h-0 flex-1 flex-col ${
           isShop || (isShopWaiting && !shopPeek) ? 'pointer-events-none select-none' : ''
         }`}
         aria-hidden={isShop || (isShopWaiting && !shopPeek) || undefined}
       >
-        <section>
-          <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <p className="font-label text-[10px] uppercase tracking-[0.16em] text-[var(--color-primary)]">
-                {match.mode === 'bot'
-                  ? 'Partida rápida · vs RogueBot'
-                  : isWaitingRival
-                    ? 'Reto Portal · esperando rival'
-                    : 'Partida'}
-              </p>
-              <h1 className="font-display text-2xl text-[var(--color-ink)]">
-                {isWaitingRival
-                  ? 'Esperando aceptación…'
-                  : dimLabel[match.current_dimension] ?? match.current_dimension}
-              </h1>
-              <p className="mt-1 text-sm text-[var(--color-ink-muted)]">
-                {isWaitingRival
-                  ? 'El rival debe pulsar Aceptar en el toast de Portal / inbox.'
-                  : `Ciclo ${match.cycle_index} · fase ${match.phase} · movimientos ${match.moves_in_phase}/${match.moves_per_phase}`}
-              </p>
-              {peerInfo ? (
-                <p className="font-label mt-2 text-[10px] uppercase tracking-[0.14em] text-[var(--color-ink-muted)]">
-                  Portal · {peerInfo.status}
-                  {peerInfo.rivalOnline ? ' · rival en canal' : ' · solo tú'}
-                  {peerInfo.shoppingActivity ? ' · rival en tienda…' : ''}
-                </p>
-              ) : null}
-              {rivalEmote ? (
-                <p className="mt-2 text-2xl" aria-live="polite">
-                  {rivalEmote}
-                </p>
-              ) : null}
-              {match.current_dimension === 'espejo' ? (
-                <p className="mt-2 max-w-md text-xs leading-relaxed text-[var(--color-primary)]">
-                  Espejo activo: arrastra hacia un lado y la pieza va al contrario. Los peones van hacia
-                  tu propio bando (pueden coronar en tu fila de inicio). Enroque corto ↔ largo.
-                </p>
-              ) : null}
-              {(you as MatchPlayer & { giratiempo_active?: boolean })?.giratiempo_active ? (
-                <p className="mt-2 max-w-md text-xs leading-relaxed text-[var(--color-primary)]">
-                  Giratiempo: te queda un movimiento extra en este turno (máx. 1 captura; jaque corta el
-                  doble turno).
-                </p>
-              ) : null}
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {!isFinished && !isWaitingRival ? (
-                <>
-                  {['👍', '😮', '🔥', '♟️'].map((emote) => (
-                    <button
-                      key={emote}
-                      type="button"
-                      className="btn-ghost !px-2 !py-1 text-base"
-                      title="Emote Portal"
-                      onClick={() => {
-                        if (!user?.uid) return
-                        void publishEmoteRef.current?.({ matchId: id, uid: user.uid, emote })
-                      }}
-                    >
-                      {emote}
-                    </button>
-                  ))}
-                  <button type="button" onClick={() => void resign()} className="btn-ghost">
-                    Rendirse
+        {/* Barra meta: logo + acciones */}
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-1 pb-1.5">
+          <div className="flex min-w-0 items-center gap-3">
+            <Link
+              to="/"
+              className="font-display text-base tracking-tight text-[var(--color-primary)] hover:opacity-80"
+            >
+              RogueChess
+            </Link>
+            {rivalEmote ? (
+              <span className="text-xl leading-none" aria-live="polite">
+                {rivalEmote}
+              </span>
+            ) : null}
+          </div>
+          <div className="flex items-center gap-1.5">
+            {!isFinished && !isWaitingRival ? (
+              <>
+                {['👍', '😮', '🔥', '♟️'].map((emote) => (
+                  <button
+                    key={emote}
+                    type="button"
+                    className="btn-ghost !px-2 !py-1 text-sm"
+                    title="Emote Portal"
+                    onClick={() => {
+                      if (!user?.uid) return
+                      void publishEmoteRef.current?.({ matchId: id, uid: user.uid, emote })
+                    }}
+                  >
+                    {emote}
                   </button>
-                </>
-              ) : isFinished ? (
-                <button type="button" onClick={() => navigate('/')} className="btn-primary">
-                  Salir
+                ))}
+                <button
+                  type="button"
+                  onClick={() => void resign()}
+                  className="btn-ghost !px-3 !py-1 text-xs"
+                >
+                  Rendirse
                 </button>
-              ) : (
-                <button type="button" onClick={() => navigate('/')} className="btn-ghost">
-                  Cancelar reto
-                </button>
-              )}
+              </>
+            ) : isFinished ? (
+              <button type="button" onClick={() => navigate('/')} className="btn-primary !px-3 !py-1 text-xs">
+                Salir
+              </button>
+            ) : (
+              <button type="button" onClick={() => navigate('/')} className="btn-ghost !px-3 !py-1 text-xs">
+                Cancelar reto
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Fila: info dimensión (izq) + tablero (centro) */}
+        <div className="flex min-h-0 flex-1 items-stretch gap-4 lg:gap-6">
+          {/* Panel dimensión — izquierda, legible */}
+          <aside className="hidden w-[min(100%,220px)] shrink-0 flex-col justify-center sm:flex lg:w-[240px]">
+            <p className="font-label text-[10px] uppercase tracking-[0.18em] text-[var(--color-primary)]">
+              {isWaitingRival ? 'Reto' : `Ciclo ${match.cycle_index}`}
+            </p>
+            <h1 className="font-display mt-1 text-xl leading-tight text-[var(--color-ink)] lg:text-2xl">
+              {isWaitingRival
+                ? 'Esperando aceptación…'
+                : dimInfo[match.current_dimension]?.name ?? match.current_dimension}
+            </h1>
+            <p className="mt-3 text-sm leading-relaxed text-[var(--color-ink-muted)]">
+              {isWaitingRival
+                ? 'El rival debe aceptar en Portal / inbox.'
+                : dimInfo[match.current_dimension]?.description ?? ''}
+            </p>
+            {!isWaitingRival ? (
+              <p className="font-label mt-4 text-[10px] uppercase tracking-[0.14em] text-[var(--color-ink-muted)]">
+                {match.moves_in_phase}/{match.moves_per_phase} mov.
+                {match.mode === 'bot' ? ' · vs RogueBot' : ''}
+                {match.phase === 'shop' || match.status === 'shop' ? ' · mercado' : ''}
+              </p>
+            ) : null}
+            {(you as MatchPlayer & { giratiempo_active?: boolean })?.giratiempo_active ? (
+              <p className="mt-3 text-xs leading-snug text-[var(--color-primary)]">
+                Giratiempo: movimiento extra este turno (máx. 1 captura).
+              </p>
+            ) : null}
+          </aside>
+
+          {/* Tablero centrado */}
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col items-center justify-center gap-1.5">
+            {/* Móvil: título corto de dimensión */}
+            <div className="w-full shrink-0 text-center sm:hidden">
+              <h1 className="font-display text-base text-[var(--color-ink)]">
+                {isWaitingRival
+                  ? 'Esperando…'
+                  : dimInfo[match.current_dimension]?.name ?? match.current_dimension}
+              </h1>
             </div>
-          </div>
 
-          <div className="mb-3 flex justify-between font-label text-xs uppercase tracking-wider text-[var(--color-ink-muted)]">
-            <span className={clocks.runningFor === 'black' ? 'text-[var(--color-primary)]' : ''}>
-              Negras · {black?.display_name ?? '…'} ·{' '}
-              <span className="tabular-nums">{formatMs(clocks.blackMs)}</span>
-              {clocks.runningFor === 'black' ? ' · ●' : ''}
-            </span>
-            <span className={match.turn_color === 'black' ? 'text-[var(--color-primary)]' : ''}>
-              {match.turn_color === 'black' ? 'Su turno' : !clocks.runningFor && match.status === 'active' ? 'Reloj en pausa' : ''}
-            </span>
-          </div>
+            <div
+              className={`flex w-[min(100%,560px,calc(100dvh-268px))] flex-col ${
+                isShop || (isShopWaiting && !shopPeek) ? 'opacity-40 blur-[2px]' : ''
+              }`}
+            >
+              {/* Reloj rival */}
+              <div className="flex items-center justify-between pb-1.5 font-label text-xs uppercase tracking-wider text-[var(--color-ink-muted)]">
+                <span className={clocks.runningFor === rivalColor ? 'text-[var(--color-primary)]' : ''}>
+                  {rivalPlayer?.display_name ?? '…'}
+                  {remoteDrag?.active ? ' · moviendo…' : ''}
+                </span>
+                <span
+                  className={`tabular-nums text-sm ${
+                    clocks.runningFor === rivalColor
+                      ? 'text-[var(--color-primary)]'
+                      : 'text-[var(--color-ink)]'
+                  }`}
+                >
+                  {formatMs(rivalMs)}
+                  {clocks.runningFor === rivalColor ? ' ●' : ''}
+                </span>
+              </div>
 
-          <div className={`mx-auto max-w-[min(100%,520px)] ${isShop || (isShopWaiting && !shopPeek) ? 'opacity-40 blur-[2px]' : ''}`}>
-            {aim ? (
-              <JokerTargetBanner
-                open
-                jokerName={aim.jokerName}
-                mode={aim.mode}
-                selected={aim.squares}
-                onCancel={() => setAim(null)}
+              <Chessboard
+                options={{
+                  id: `board-${match.id}`,
+                  position: displayFen,
+                  boardOrientation: you?.color === 'black' ? 'black' : 'white',
+                  allowDragging:
+                    yourTurn && !busy && !inShopPhase && !isFinished && !optimisticFen && !aim,
+                  animationDurationInMs: 280,
+                  squareStyles: dragSquareStyles,
+                  onSquareClick: ({ square }) => {
+                    if (square) onBoardSquareClick(square)
+                  },
+                  onPieceDrag: ({ piece, square }) => {
+                    if (aim || !square) return
+                    startLocalDrag(square, piece.pieceType)
+                  },
+                  onMouseOverSquare: ({ square }) => {
+                    if (localDrag.current) hoverLocalDrag(square)
+                  },
+                  onPieceDragCancel: () => {
+                    endLocalDrag()
+                  },
+                  onPieceDrop: ({ sourceSquare, targetSquare }) => {
+                    if (aim) return false
+                    return onPieceDrop({ sourceSquare, targetSquare })
+                  },
+                  boardStyle: {
+                    borderRadius: '4px',
+                    boxShadow: '0 12px 40px rgba(115,92,0,0.08)',
+                    cursor: aim ? 'crosshair' : undefined,
+                  },
+                  lightSquareStyle: { backgroundColor: '#f5f4ef' },
+                  darkSquareStyle: { backgroundColor: '#d0c5af' },
+                }}
               />
-            ) : null}
-            <Chessboard
-              options={{
-                id: `board-${match.id}`,
-                position: displayFen,
-                boardOrientation: you?.color === 'black' ? 'black' : 'white',
-                allowDragging:
-                  yourTurn && !busy && !inShopPhase && !isFinished && !optimisticFen && !aim,
-                animationDurationInMs: 280,
-                squareStyles: dragSquareStyles,
-                onSquareClick: ({ square }) => {
-                  if (aim) onAimSquare(square)
-                },
-                onPieceDrag: ({ piece, square }) => {
-                  if (aim || !square) return
-                  startLocalDrag(square, piece.pieceType)
-                },
-                onMouseOverSquare: ({ square }) => {
-                  if (localDrag.current) hoverLocalDrag(square)
-                },
-                onPieceDragCancel: () => {
-                  endLocalDrag()
-                },
-                onPieceDrop: ({ sourceSquare, targetSquare }) => {
-                  if (aim) return false
-                  return onPieceDrop({ sourceSquare, targetSquare })
-                },
-                boardStyle: {
-                  borderRadius: '4px',
-                  boxShadow: '0 12px 40px rgba(115,92,0,0.08)',
-                  cursor: aim ? 'crosshair' : undefined,
-                },
-                lightSquareStyle: { backgroundColor: '#f5f4ef' },
-                darkSquareStyle: { backgroundColor: '#d0c5af' },
-              }}
-            />
-            {remoteDrag?.active ? (
-              <p className="mt-2 text-center font-label text-[10px] uppercase tracking-wider text-[var(--color-primary)]">
-                Rival moviendo…
-              </p>
-            ) : null}
-            {blockedSquares.size > 0 ? (
-              <p className="mt-2 text-center text-[11px] text-[var(--color-ink-muted)]">
-                Casillas en rojo/oscuro: quemadas o en ruina — no aterrizar ni atravesarlas (el caballo sí salta).
-              </p>
-            ) : null}
-          </div>
 
-          <div className="mt-3 flex justify-between font-label text-xs uppercase tracking-wider text-[var(--color-ink-muted)]">
-            <span className={clocks.runningFor === 'white' ? 'text-[var(--color-primary)]' : ''}>
-              Blancas · {white?.display_name ?? '…'} ·{' '}
-              <span className="tabular-nums">{formatMs(clocks.whiteMs)}</span>
-              {clocks.runningFor === 'white' ? ' · ●' : ''}
-            </span>
-            <span className={yourTurn ? 'text-[var(--color-primary)]' : ''}>
-              {yourTurn ? 'Tu turno' : match.turn_color === 'white' ? 'Turno blancas' : ''}
-              {!clocks.runningFor && match.status === 'active' && yourTurn ? ' · reloj espera 1ª jugada' : ''}
-            </span>
-          </div>
+              {/* Reloj propio */}
+              <div className="flex items-center justify-between pt-1.5 font-label text-xs uppercase tracking-wider text-[var(--color-ink-muted)]">
+                <span className={clocks.runningFor === myColor ? 'text-[var(--color-primary)]' : ''}>
+                  {myPlayer?.display_name ?? 'Tú'}
+                  {yourTurn ? ' · tu turno' : ''}
+                  {!clocks.runningFor && match.status === 'active' && yourTurn
+                    ? ' · reloj espera 1ª jugada'
+                    : ''}
+                </span>
+                <span
+                  className={`tabular-nums text-sm ${
+                    clocks.runningFor === myColor
+                      ? 'text-[var(--color-primary)]'
+                      : 'text-[var(--color-ink)]'
+                  }`}
+                >
+                  {formatMs(myMs)}
+                  {clocks.runningFor === myColor ? ' ●' : ''}
+                </span>
+              </div>
+            </div>
 
-          {error && !isShop ? <p className="mt-3 text-sm text-[var(--color-error)]">{error}</p> : null}
-        </section>
-
-        <aside className="flex flex-col gap-6">
-          <div className="panel p-4">
-            <h2 className="font-label text-[10px] uppercase tracking-[0.14em] text-[var(--color-ink-muted)]">
-              Inventario
-            </h2>
-            <div className="mt-3 flex flex-wrap gap-2">
+            {/* Comodines */}
+            <div className="flex shrink-0 items-center gap-2 pt-0.5">
               {yourInv.map((item) =>
                 item.joker ? (
                   <JokerCard
                     key={item.id}
                     joker={item.joker as Joker}
-                    size={112}
+                    size={96}
                     disabled={busy || isFinished || inShopPhase || !yourTurn}
                     selected={aim?.inventoryId === item.id}
                     onClick={() => {
@@ -1470,37 +1760,34 @@ export function MatchPage() {
                   />
                 ) : null,
               )}
-              {yourInv.length === 0 ? (
-                <p className="text-sm text-[var(--color-ink-muted)]">Vacío (máx 3)</p>
-              ) : null}
+              {Array.from({ length: Math.max(0, (you?.inventory_slots ?? 3) - yourInv.length) }).map(
+                (_, i) => (
+                  <div
+                    key={`slot-${i}`}
+                    className="flex items-center justify-center rounded border border-dashed border-[var(--color-outline-soft)]/60 text-[var(--color-ink-muted)]/50"
+                    style={{ width: 96, height: Math.round(96 * 1.4) }}
+                    aria-hidden
+                  >
+                    <span className="font-label text-[9px] uppercase tracking-wider">Vacío</span>
+                  </div>
+                ),
+              )}
             </div>
-            <p className="mt-2 text-[11px] text-[var(--color-ink-muted)]">
-              {inShopPhase
-                ? isShopWaiting
-                  ? 'Esperando al rival — puedes mirar el tablero'
-                  : 'Negocia en el mercado'
-                : aim
-                  ? 'Click en el tablero para apuntar · Esc cancela'
-                  : 'Click = usar comodín (algunos piden casilla)'}
+
+            <p className="h-4 shrink-0 truncate text-center text-[11px] text-[var(--color-ink-muted)]">
+              {blockedSquares.size > 0
+                ? 'Casillas oscuras/rojas: quemadas o en ruina — el caballo sí salta'
+                : inShopPhase
+                  ? isShopWaiting
+                    ? `Esperando rival · ${Math.ceil(shopLeftMs / 1000)}s`
+                    : `Mercado abierto · ${Math.ceil(shopLeftMs / 1000)}s`
+                  : ''}
             </p>
           </div>
 
-          {!inShopPhase ? (
-            <div className="panel p-4 text-sm text-[var(--color-ink-muted)]">
-              Tras {match.moves_per_phase} movimientos se abre el mercado. Ahora: {match.moves_in_phase}.
-            </div>
-          ) : (
-            <div className="panel p-4 text-sm text-[var(--color-primary)]">
-              {isShopWaiting
-                ? `Esperando rival · ${Math.ceil(shopLeftMs / 1000)}s`
-                : `Mercado abierto · ${Math.ceil(shopLeftMs / 1000)}s`}
-            </div>
-          )}
-
-          <Link to="/" className="font-label text-xs uppercase tracking-wider text-[var(--color-ink-muted)] hover:text-[var(--color-ink)]">
-            ← Lobby
-          </Link>
-        </aside>
+          {/* Spacer derecho para equilibrar el panel izquierdo en desktop */}
+          <div className="hidden w-[min(100%,220px)] shrink-0 lg:block lg:w-[240px]" aria-hidden />
+        </div>
       </div>
     </PageTransition>
   )

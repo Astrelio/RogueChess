@@ -14,7 +14,14 @@ import {
   checkMoveAgainstBoard,
   mirrorCommand,
 } from './dimensions.js'
-import { emptyOps, type Color, type EngineContext, type MoveResult } from './types.js'
+import {
+  emptyOps,
+  type Color,
+  type EngineContext,
+  type EngineOps,
+  type MoveResult,
+  type PieceFlag,
+} from './types.js'
 
 const SLIDERS = new Set<PieceSymbol>(['q', 'r', 'b'])
 /** Mercado negro: bonus por captura (GDD: hasta +15s). */
@@ -24,6 +31,54 @@ const TRAP_TTL_PLIES = 2
 
 export function cjs(color: Color): 'w' | 'b' {
   return color === 'white' ? 'w' : 'b'
+}
+
+/** ¿La reina falsa Multijugos debe colapsar en este ply? */
+export function multijugosShouldDie(f: PieceFlag, ctx: EngineContext, plyNow: number): boolean {
+  if (!f.multijugos_queen) return false
+  if (f.multijugos_dies_ply != null) return plyNow >= f.multijugos_dies_ply
+  // Fallback legacy: created_fullmove en payload
+  const created = Number(f.payload?.created_fullmove ?? NaN)
+  if (!Number.isNaN(created)) {
+    const currentFullmove = Number(ctx.fen.split(' ')[5] || 1)
+    return currentFullmove > created
+  }
+  return false
+}
+
+/**
+ * Quita del tablero las reinas Multijugos del color indicado cuyo plazo expiró.
+ * GDD: viven 1 turno (jugada + respuesta rival); colapsan al volver el turno del dueño.
+ */
+export function applyMultijugosCollapse(
+  ctx: EngineContext,
+  chess: Chess,
+  ops: EngineOps,
+  ownerColor: Color,
+  plyNow: number,
+): boolean {
+  let changed = false
+  for (const f of ctx.flags) {
+    if (!f.multijugos_queen || f.color !== ownerColor || !f.square) continue
+    if (!multijugosShouldDie(f, ctx, plyNow)) continue
+    if (ops.flagOps.some((op) => op.op === 'remove' && op.pieceUid === f.piece_uid)) continue
+
+    let sq = f.square
+    for (const op of ops.flagOps) {
+      if (op.pieceUid !== f.piece_uid) continue
+      if (op.op === 'move') sq = op.square
+      if (op.op === 'upsert' && op.square) sq = op.square
+    }
+
+    const piece = chess.get(sq as Square)
+    if (piece && piece.color === cjs(ownerColor) && piece.type !== 'k') {
+      chess.remove(sq as Square)
+      ops.events.push(`Poción multijugos: la reina en ${sq} colapsa y muere`)
+      changed = true
+    }
+    ops.flagOps.push({ op: 'remove', pieceUid: f.piece_uid })
+  }
+  return changed
 }
 
 function otherColor(color: Color): Color {
@@ -312,19 +367,8 @@ export function applyPlayerMove(ctx: EngineContext, input: MoveInput): MoveResul
     return { ok: false, error: 'FEN de partida inválido' }
   }
 
-  // 0) Poción multijugos: la reina falsa del mover colapsa al iniciar su turno
-  const currentFullmove = Number(ctx.fen.split(' ')[5] || 1)
-  for (const f of ctx.flags) {
-    if (!f.multijugos_queen || f.color !== ctx.moverColor || !f.square) continue
-    const created = Number(f.payload?.created_fullmove ?? NaN)
-    if (Number.isNaN(created) || currentFullmove <= created) continue
-    const piece = chess.get(f.square as Square)
-    if (piece && piece.type === 'q' && piece.color === cjs(ctx.moverColor)) {
-      chess.remove(f.square as Square)
-      ops.events.push(`Poción multijugos: la reina en ${f.square} colapsa y muere`)
-    }
-    ops.flagOps.push({ op: 'remove', pieceUid: f.piece_uid })
-  }
+  // 0) Poción multijugos: seguridad — si aún está al iniciar el turno del dueño, colapsa
+  applyMultijugosCollapse(ctx, chess, ops, ctx.moverColor, ctx.ply)
 
   // Multijugos ya colapsó arriba. Monolitos bajo piezas: absorben al dueño (GDD spawn).
   const absorbedMonolithIds = new Set<string>()
@@ -663,9 +707,23 @@ export function applyPlayerMove(ctx: EngineContext, input: MoveInput): MoveResul
     ctx.giratiempoMovesLeft - 1 > 0 &&
     ctx.giratiempoCaptures + (isCapture ? 1 : 0) <= 1
 
-  const fenAfter = keepTurn ? fenWithSideToMove(fenRaw, ctx.moverColor) : fenRaw
+  let fenAfter = keepTurn ? fenWithSideToMove(fenRaw, ctx.moverColor) : fenRaw
   if (keepTurn) {
     ops.events.push('Giratiempo: puedes mover otra vez')
+  }
+
+  // Multijugos: al pasar el turno al dueño (tras la respuesta del rival), la reina colapsa
+  // para que el tablero ya la muestre muerta antes de su siguiente acción.
+  if (!keepTurn) {
+    const nextColor: Color = fenAfter.split(' ')[1] === 'b' ? 'black' : 'white'
+    if (nextColor !== ctx.moverColor) {
+      const collapsed = applyMultijugosCollapse(ctx, chess, ops, nextColor, ctx.ply + 1)
+      if (collapsed) {
+        fenAfter = fenWithSideToMove(chess.fen(), nextColor)
+        // Recalcular jaque al rival ya no aplica; el jaque era al dueño del turno siguiente.
+        // Si la reina daba jaque, al morir el jaque desaparece — coherente con GDD post-respuesta.
+      }
+    }
   }
 
   return {

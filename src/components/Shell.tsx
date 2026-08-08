@@ -12,12 +12,15 @@ import { pageFade, easeOut } from '@/lib/motion'
 export function Shell({ children }: { children: React.ReactNode }) {
   const location = useLocation()
   const isLanding = location.pathname === '/'
+  const isMatch = location.pathname.startsWith('/partida')
 
   return (
     <LobbyPresenceProvider>
       <PortalInboxProvider>
         <MatchmakingProvider>
-          <ShellChrome isLanding={isLanding}>{children}</ShellChrome>
+          <ShellChrome isLanding={isLanding} isMatch={isMatch}>
+            {children}
+          </ShellChrome>
         </MatchmakingProvider>
       </PortalInboxProvider>
     </LobbyPresenceProvider>
@@ -27,63 +30,70 @@ export function Shell({ children }: { children: React.ReactNode }) {
 function ShellChrome({
   children,
   isLanding,
+  isMatch,
 }: {
   children: React.ReactNode
   isLanding: boolean
+  isMatch: boolean
 }) {
   const { user } = useAuth()
   const location = useLocation()
   const matchmaking = useMatchmaking()
   const inbox = usePortalInbox()
+  const fullViewport = isLanding || isMatch
 
   return (
     <div
       className={cn(
         'parchment relative overflow-x-hidden',
-        isLanding ? 'flex h-dvh max-h-dvh flex-col overflow-hidden' : 'min-h-full',
+        fullViewport ? 'flex h-dvh max-h-dvh flex-col overflow-hidden' : 'min-h-full',
       )}
     >
       <PortalLiveChrome />
-      <motion.header
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.45, ease: easeOut }}
-        className="relative z-40 shrink-0 border-b hairline bg-[color-mix(in_srgb,var(--color-surface)_80%,transparent)] backdrop-blur-md"
-      >
-        <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-3 sm:px-8">
-          <Link to="/" className="group relative">
-            <span className="font-display text-lg tracking-tight text-[var(--color-primary)] sm:text-xl">
-              RogueChess
-            </span>
-            <motion.span
-              layoutId="brand-underline"
-              className="absolute -bottom-1 left-0 h-px w-full origin-left bg-[var(--color-primary-container)]"
-              initial={{ scaleX: 0 }}
-              animate={{ scaleX: 1 }}
-              transition={{ delay: 0.35, duration: 0.5, ease: easeOut }}
-            />
-          </Link>
-          {user ? (
-            <UserMenu
-              onPlay={() => {
-                void matchmaking.start()
-              }}
-              playBusy={matchmaking.busy}
-              inboxBadge={inbox.badge}
-              onClearInbox={() => inbox.markAllRead()}
-            />
-          ) : (
-            <GuestMenu />
-          )}
-        </div>
-      </motion.header>
+      {!isMatch ? (
+        <motion.header
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.45, ease: easeOut }}
+          className="relative z-40 shrink-0 border-b hairline bg-[color-mix(in_srgb,var(--color-surface)_80%,transparent)] backdrop-blur-md"
+        >
+          <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-3 sm:px-8">
+            <Link to="/" className="group relative">
+              <span className="font-display text-lg tracking-tight text-[var(--color-primary)] sm:text-xl">
+                RogueChess
+              </span>
+              <motion.span
+                layoutId="brand-underline"
+                className="absolute -bottom-1 left-0 h-px w-full origin-left bg-[var(--color-primary-container)]"
+                initial={{ scaleX: 0 }}
+                animate={{ scaleX: 1 }}
+                transition={{ delay: 0.35, duration: 0.5, ease: easeOut }}
+              />
+            </Link>
+            {user ? (
+              <UserMenu
+                onPlay={() => {
+                  void matchmaking.start()
+                }}
+                playBusy={matchmaking.busy}
+                inboxBadge={inbox.badge}
+                onClearInbox={() => inbox.markAllRead()}
+              />
+            ) : (
+              <GuestMenu />
+            )}
+          </div>
+        </motion.header>
+      ) : null}
 
       <main
         className={cn(
-          'relative z-10 mx-auto w-full max-w-5xl px-4 sm:px-8',
-          isLanding
-            ? 'flex min-h-0 flex-1 flex-col justify-center overflow-hidden py-3 sm:py-4'
-            : 'py-8 sm:py-12',
+          'relative z-10 w-full',
+          isMatch
+            ? 'flex min-h-0 flex-1 flex-col overflow-hidden px-3 py-2 sm:px-5'
+            : 'mx-auto max-w-5xl px-4 sm:px-8',
+          isLanding && 'flex min-h-0 flex-1 flex-col justify-center overflow-hidden py-3 sm:py-4',
+          !isLanding && !isMatch && 'py-8 sm:py-12',
         )}
       >
         <AnimatePresence mode="wait">
@@ -93,7 +103,13 @@ function ShellChrome({
             initial="initial"
             animate="animate"
             exit="exit"
-            className={isLanding ? 'flex min-h-0 flex-1 flex-col justify-center' : undefined}
+            className={
+              isLanding
+                ? 'flex min-h-0 flex-1 flex-col justify-center'
+                : isMatch
+                  ? 'flex min-h-0 flex-1 flex-col'
+                  : undefined
+            }
           >
             {children}
           </motion.div>

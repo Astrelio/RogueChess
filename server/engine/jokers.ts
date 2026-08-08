@@ -9,7 +9,7 @@ import {
   ringsFrom,
 } from './board.js'
 import { blockedSquares } from './dimensions.js'
-import { cjs, colorInCheck } from './moves.js'
+import { applyMultijugosCollapse, cjs, colorInCheck, fenWithSideToMove } from './moves.js'
 import { emptyOps, type Color, type EngineContext, type EngineOps, type JokerResult } from './types.js'
 
 /** Códigos que aplica SQL (fn_consume_joker): el motor no toca tablero. */
@@ -55,17 +55,27 @@ export function applyJoker(
   payload: Record<string, unknown>,
 ): JokerResult {
   const ops = emptyOps()
-  if (PASSIVE_CODES.has(code)) {
-    ops.events.push(`Comodín ${code}: efecto aplicado (reloj/flags por servidor)`)
-    return ok(ops)
-  }
 
   let chess: Chess
   try {
-    chess = new Chess(ctx.fen)
+    chess = new Chess(fenWithSideToMove(ctx.fen, ctx.turnColor))
   } catch {
     return fail('FEN de partida inválido')
   }
+  // Multijugos caducado: colapsa al actuar en el nuevo turno del dueño
+  const collapsed = applyMultijugosCollapse(ctx, chess, ops, ctx.moverColor, ctx.ply)
+  const done = (extra?: { fizzled?: boolean; newFen?: string }): JokerResult => {
+    if (collapsed && extra?.newFen === undefined) {
+      return ok(ops, { ...extra, newFen: editedFen(chess) })
+    }
+    return ok(ops, extra)
+  }
+
+  if (PASSIVE_CODES.has(code)) {
+    ops.events.push(`Comodín ${code}: efecto aplicado (reloj/flags por servidor)`)
+    return done()
+  }
+
   const me = cjs(ctx.moverColor)
 
   switch (code) {
@@ -96,7 +106,7 @@ export function applyJoker(
         else if (f.square === b) ops.flagOps.push({ op: 'move', pieceUid: f.piece_uid, square: a })
       }
       ops.events.push(`Aparición: ${a} ↔ ${b}`)
-      return ok(ops, { newFen: fen })
+      return done({ newFen: fen })
     }
 
     case 'avada_kedavra': {
@@ -115,7 +125,7 @@ export function applyJoker(
         if (f.square === square) ops.flagOps.push({ op: 'remove', pieceUid: f.piece_uid })
       }
       ops.events.push(`Avada Kedavra: la pieza en ${square} muere`)
-      return ok(ops, { newFen: editedFen(chess) })
+      return done({ newFen: editedFen(chess) })
     }
 
     case 'morsmordre': {
@@ -139,29 +149,29 @@ export function applyJoker(
         ctx.effects.some((e) => e.is_active && e.kind === 'expecto_patronum')
       if (expecto) {
         ops.events.push('Morsmordre: Expecto Patronum protege el tablero — el hechizo se disipa')
-        return ok(ops, { fizzled: true })
+        return done({ fizzled: true })
       }
 
       const targetColor = otherColor(ctx.moverColor)
       const back = backwardSquare(square, targetColor)
       if (!back || (target.type === 'p' && (back[1] === '1' || back[1] === '8'))) {
         ops.events.push('Morsmordre: el borde del tablero bloquea el retroceso — falla')
-        return ok(ops, { fizzled: true })
+        return done({ fizzled: true })
       }
       const blocked = blockedSquares(ctx)
       if (blocked.has(back)) {
         ops.events.push('Morsmordre: la casilla de retroceso está quemada o en ruina — falla')
-        return ok(ops, { fizzled: true })
+        return done({ fizzled: true })
       }
       const occupant = chess.get(back as Square)
       if (occupant && occupant.color !== me) {
         ops.events.push('Morsmordre: una pieza de su propio equipo bloquea — falla')
-        return ok(ops, { fizzled: true })
+        return done({ fizzled: true })
       }
       if (occupant && occupant.color === me) {
         if (occupant.type === 'k') {
           ops.events.push('Morsmordre: tu rey bloquea el retroceso — falla')
-          return ok(ops, { fizzled: true })
+          return done({ fizzled: true })
         }
         chess.remove(back as Square)
         for (const f of ctx.flags) {
@@ -179,7 +189,7 @@ export function applyJoker(
       if (colorInCheck(fen, ctx.moverColor, ctx)) {
         return fail('Morsmordre: el miedo dejaría a tu rey en jaque')
       }
-      return ok(ops, { newFen: fen })
+      return done({ newFen: fen })
     }
 
     case 'bombarda': {
@@ -291,7 +301,7 @@ export function applyJoker(
       }
 
       ops.events.push(`Bombarda: explosión en ${square} — ${burned} casillas quemadas este ciclo`)
-      return ok(ops, { newFen: fen })
+      return done({ newFen: fen })
     }
 
     case 'defodio': {
@@ -308,7 +318,7 @@ export function applyJoker(
         payload: { created_ply: ctx.ply },
       })
       ops.events.push(`Defodio: trampa oculta en ${square} (1 turno)`)
-      return ok(ops)
+      return done()
     }
 
     case 'imperius': {
@@ -340,7 +350,7 @@ export function applyJoker(
         return fail('Imperius: esa jugada dejaría a tu propio rey en jaque')
       }
       ops.events.push(`Imperius: controlas la pieza enemiga ${from} → ${to}`)
-      return ok(ops, { newFen: fen })
+      return done({ newFen: fen })
     }
 
     case 'capa_invisibilidad': {
@@ -356,7 +366,7 @@ export function applyJoker(
         isInvisible: true,
       })
       ops.events.push(`Capa de invisibilidad: la pieza en ${square} desaparece de la vista rival`)
-      return ok(ops)
+      return done()
     }
 
     case 'pocion_multijugos': {
@@ -380,7 +390,7 @@ export function applyJoker(
         payload: { created_fullmove: fullmove },
       })
       ops.events.push(`Poción multijugos: el peón de ${square} es Reina por 1 turno`)
-      return ok(ops, { newFen: editedFen(chess) })
+      return done({ newFen: editedFen(chess) })
     }
 
     default:

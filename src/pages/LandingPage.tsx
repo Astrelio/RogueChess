@@ -74,7 +74,7 @@ export function LandingPage() {
         </motion.div>
 
         <motion.div
-          className="relative mx-auto flex h-full max-h-full w-full max-w-[420px] items-center justify-center lg:max-w-none lg:justify-end"
+          className="relative mx-auto flex h-full max-h-full w-full max-w-[680px] items-center justify-center lg:max-w-none lg:justify-end"
           initial={{ opacity: 0, x: 28, scale: 0.96 }}
           animate={{ opacity: 1, x: 0, scale: 1 }}
           transition={{ duration: 0.85, ease: easeOut, delay: 0.12 }}
@@ -82,11 +82,11 @@ export function LandingPage() {
           <motion.img
             src={MASCOT_SRC}
             alt="Mascota de RogueChess"
-            width={1024}
-            height={1024}
+            width={1696}
+            height={2528}
             decoding="async"
             draggable={false}
-            className="h-auto max-h-[min(240px,32dvh)] w-full max-w-[520px] select-none object-contain object-center sm:max-h-[min(420px,48dvh)] lg:max-h-[min(520px,58dvh)]"
+            className="h-auto max-h-[min(480px,58dvh)] w-full max-w-[800px] select-none object-contain object-center sm:max-h-[min(720px,78dvh)] lg:max-h-[min(880px,90dvh)]"
             animate={{ y: [0, -10, 0] }}
             transition={{ duration: 5.8, repeat: Infinity, ease: 'easeInOut' }}
           />

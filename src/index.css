@@ -164,3 +164,76 @@
 .rc-fx-vanish {
   animation: rc-joker-vanish 0.45s ease-out both;
 }
+
+/* Indicadores de movimiento / apuntado de comodines (casilla completa, suaves) */
+@keyframes rc-move-blink {
+  0%,
+  100% {
+    background-color: rgba(61, 107, 79, 0.1);
+    box-shadow: inset 0 0 0 1px rgba(61, 107, 79, 0.22);
+  }
+  50% {
+    background-color: rgba(61, 107, 79, 0.26);
+    box-shadow: inset 0 0 0 2px rgba(61, 107, 79, 0.4);
+  }
+}
+
+@keyframes rc-capture-blink {
+  0%,
+  100% {
+    background-color: rgba(186, 26, 26, 0.12);
+    box-shadow: inset 0 0 0 1px rgba(186, 26, 26, 0.28);
+  }
+  50% {
+    background-color: rgba(186, 26, 26, 0.28);
+    box-shadow: inset 0 0 0 2px rgba(186, 26, 26, 0.45);
+  }
+}
+
+@keyframes rc-joker-hostile-blink {
+  0%,
+  100% {
+    background-color: rgba(186, 26, 26, 0.16);
+    box-shadow: inset 0 0 0 2px rgba(186, 26, 26, 0.35);
+  }
+  50% {
+    background-color: rgba(186, 26, 26, 0.36);
+    box-shadow: inset 0 0 0 2px rgba(186, 26, 26, 0.55);
+  }
+}
+
+@keyframes rc-joker-ally-blink {
+  0%,
+  100% {
+    background-color: rgba(212, 175, 55, 0.14);
+    box-shadow: inset 0 0 0 2px rgba(212, 175, 55, 0.3);
+  }
+  50% {
+    background-color: rgba(212, 175, 55, 0.32);
+    box-shadow: inset 0 0 0 2px rgba(212, 175, 55, 0.5);
+  }
+}
+
+@keyframes rc-joker-empty-blink {
+  0%,
+  100% {
+    background-color: rgba(65, 91, 164, 0.1);
+    box-shadow: inset 0 0 0 1px rgba(65, 91, 164, 0.25);
+  }
+  50% {
+    background-color: rgba(65, 91, 164, 0.26);
+    box-shadow: inset 0 0 0 2px rgba(65, 91, 164, 0.42);
+  }
+}
+
+@keyframes rc-invisible-blink {
+  0%,
+  100% {
+    background-color: rgba(90, 40, 120, 0.08);
+    box-shadow: inset 0 0 0 1px rgba(120, 70, 160, 0.25);
+  }
+  50% {
+    background-color: rgba(90, 40, 120, 0.2);
+    box-shadow: inset 0 0 0 2px rgba(120, 70, 160, 0.4);
+  }
+}
