@@ -149,18 +149,32 @@ test('espejo: enroque corto se invierte a enroque largo', () => {
   }
 })
 
-test('espejo: peón hacia el propio bando (comando adelante → va atrás)', () => {
-  // e2→e3 (comando "adelante") se invierte a e1 → corona
+test('espejo: peón no puede entrar en la fila base (evita coronación instantánea)', () => {
+  // e2→e3 (comando "adelante") se invierte a e1 → ilegal
   const fen = '7k/8/8/8/8/8/4P3/K7 w - - 0 1'
   const res = applyPlayerMove(makeCtx({ fen, dimension: 'espejo' }), { from: 'e2', to: 'e3' })
+  assert.equal(res.ok, false)
+  assert.match((res as { error: string }).error, /fila base/i)
+})
+
+test('espejo: peón homeward legal en filas intermedias', () => {
+  // e3→e4 invertido a e2
+  const fen = '7k/8/8/8/8/4P3/8/K7 w - - 0 1'
+  const res = applyPlayerMove(makeCtx({ fen, dimension: 'espejo' }), { from: 'e3', to: 'e4' })
   assert.equal(res.ok, true, res.ok ? '' : res.error)
-  if (res.ok) {
-    assert.ok(res.uci.startsWith('e2e1'))
-    assert.ok(
-      res.fenAfter.includes('Q') || res.events.some((e) => e.includes('corona')),
-      'debe coronar en e1',
-    )
-  }
+  if (res.ok) assert.equal(res.uci, 'e3e2')
+})
+
+test('bombarda: se puede atravesar zona quemada, no aterrizar', () => {
+  const fen = '8/7k/8/8/8/8/8/R3K3 w - - 0 1'
+  const cells = [
+    cell({ square: 'a3', effect: 'burned' }),
+    cell({ square: 'a4', effect: 'burned' }),
+  ]
+  const cross = applyPlayerMove(makeCtx({ fen, cells }), { from: 'a1', to: 'a5' })
+  assert.equal(cross.ok, true, cross.ok ? '' : cross.error)
+  const land = applyPlayerMove(makeCtx({ fen, cells }), { from: 'a1', to: 'a3' })
+  assert.equal(land.ok, false)
 })
 
 test('espejo: peón comando atrás → avanza normal', () => {

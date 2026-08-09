@@ -1,22 +1,63 @@
-import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { useAuth } from '@/auth/AuthContext'
 import { CustomMatchModal } from '@/components/CustomMatchModal'
 import { PageTransition } from '@/components/PageTransition'
 import { useMatchmaking } from '@/components/MatchmakingProvider'
+import { LobbyTour } from '@/components/onboarding/LobbyTour'
+import { api } from '@/lib/api'
+import { hasSeenLobbyTour, START_LOBBY_TOUR_EVENT } from '@/lib/onboarding'
 import { easeOut, riseItem, stagger } from '@/lib/motion'
 
 const MASCOT_SRC = '/mascot/Bishop.webp'
 
 export function LandingPage() {
-  const { user, ready } = useAuth()
+  const { user, ready, getToken } = useAuth()
+  const navigate = useNavigate()
   const matchmaking = useMatchmaking()
   const [customOpen, setCustomOpen] = useState(false)
+  const [tutorialBusy, setTutorialBusy] = useState(false)
+  const [showTour, setShowTour] = useState(false)
+
+  // Tour de primer login: solo autenticados y una única vez.
+  useEffect(() => {
+    if (!ready || !user || hasSeenLobbyTour()) return
+    const t = window.setTimeout(() => setShowTour(true), 900)
+    return () => window.clearTimeout(t)
+  }, [ready, user])
+
+  // Desde Ajustes → «Tutorial de interfaz»
+  useEffect(() => {
+    function onStartTour() {
+      setShowTour(true)
+    }
+    window.addEventListener(START_LOBBY_TOUR_EVENT, onStartTour)
+    return () => window.removeEventListener(START_LOBBY_TOUR_EVENT, onStartTour)
+  }, [])
+
+  async function startTutorial() {
+    if (tutorialBusy) return
+    setTutorialBusy(true)
+    try {
+      const token = await getToken()
+      if (!token) {
+        navigate('/login')
+        return
+      }
+      const { match } = await api.queueFallbackBot(token, { tutorial: true })
+      navigate(`/partida/${match.id}?tutorial=1`)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setTutorialBusy(false)
+    }
+  }
 
   return (
     <PageTransition className="flex min-h-0 flex-1 flex-col justify-center">
       <CustomMatchModal open={customOpen} onClose={() => setCustomOpen(false)} />
+      {showTour ? <LobbyTour onDone={() => setShowTour(false)} /> : null}
       <section className="relative grid min-h-0 flex-1 items-center gap-4 overflow-hidden lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:gap-6">
         <motion.div variants={stagger} initial="initial" animate="animate" className="relative z-10 max-w-xl">
           <motion.div
@@ -51,24 +92,37 @@ export function LandingPage() {
               </span>
             ) : user ? (
               <>
+                <div data-tour="play" className="flex flex-wrap gap-3">
+                  <motion.button
+                    type="button"
+                    disabled={matchmaking.busy}
+                    whileHover={{ y: -2 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => void matchmaking.start()}
+                    className="btn-primary disabled:opacity-50"
+                  >
+                    {matchmaking.busy ? 'Buscando…' : 'Partida rápida'}
+                  </motion.button>
+                  <motion.button
+                    type="button"
+                    whileHover={{ y: -2 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => setCustomOpen(true)}
+                    className="btn-ghost"
+                  >
+                    Partida personalizada
+                  </motion.button>
+                </div>
                 <motion.button
                   type="button"
-                  disabled={matchmaking.busy}
+                  data-tour="tutorial"
+                  disabled={tutorialBusy}
                   whileHover={{ y: -2 }}
                   whileTap={{ scale: 0.98 }}
-                  onClick={() => void matchmaking.start()}
-                  className="btn-primary disabled:opacity-50"
+                  onClick={() => void startTutorial()}
+                  className="btn-ghost !border-dashed disabled:opacity-50"
                 >
-                  {matchmaking.busy ? 'Buscando…' : 'Partida rápida'}
-                </motion.button>
-                <motion.button
-                  type="button"
-                  whileHover={{ y: -2 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={() => setCustomOpen(true)}
-                  className="btn-ghost"
-                >
-                  Partida personalizada
+                  {tutorialBusy ? 'Preparando…' : 'Tutorial'}
                 </motion.button>
               </>
             ) : (

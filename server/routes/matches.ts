@@ -385,6 +385,31 @@ matchesRouter.post('/queue/bot', requireAuth, async (req, res, next) => {
       )
     `
     const match = rows[0]
+
+    // Partida tutorial: regalar comodines de arranque al humano para que
+    // pueda practicar la bandeja sin esperar a la primera tienda.
+    if (req.body?.tutorial === true) {
+      try {
+        const mp = await sql`
+          SELECT mp.id FROM match_players mp
+          JOIN profiles p ON p.id = mp.profile_id
+          WHERE mp.match_id = ${match.id}::uuid AND p.firebase_uid = ${req.user!.uid}
+          LIMIT 1
+        `
+        const mpId = mp[0]?.id as string | undefined
+        if (mpId) {
+          await sql`
+            INSERT INTO match_inventory (match_id, match_player_id, joker_id, acquired_cycle, slot_index, metadata)
+            SELECT ${match.id}::uuid, ${mpId}::uuid, j.id, 0, seed.slot::smallint, '{"tutorial": true}'::jsonb
+            FROM (VALUES ('axio_tempus', 0), ('avada_kedavra', 1)) AS seed(code, slot)
+            JOIN jokers j ON j.code = seed.code
+          `
+        }
+      } catch (err) {
+        console.warn('tutorial joker seed failed', err)
+      }
+    }
+
     const state = await getState(match.id as string, req.user!.uid)
     res.json({ match, state, vsBot: true })
   } catch (err) {

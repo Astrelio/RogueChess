@@ -35,7 +35,7 @@ export function visualColumn(
   return targetColor === 'white' ? 'right' : 'left'
 }
 
-function PixelReaction({ event }: { event: ReactionEvent }) {
+function PixelReaction({ event, dark }: { event: ReactionEvent; dark?: boolean }) {
   const [broken, setBroken] = useState(false)
   const shardColors = useMemo(() => sampleEmojiColors(event.emoji, SHARDS), [event.emoji])
 
@@ -90,7 +90,19 @@ function PixelReaction({ event }: { event: ReactionEvent }) {
         <PixelEmoji emoji={event.emoji} size={40} res={16} className="drop-shadow-sm" />
       </motion.div>
       {event.username ? (
-        <span className="font-label mt-0.5 max-w-16 truncate rounded bg-[color-mix(in_srgb,var(--color-surface)_88%,transparent)] px-1 text-[8px] uppercase tracking-wider text-[var(--color-ink-muted)]">
+        <span
+          className="rc-spectator-name mt-0.5 max-w-16 truncate rounded px-1 text-[8px] uppercase tracking-wider"
+          style={{
+            // Inline: evita el override de .font-label en dims oscuras
+            backgroundColor: dark
+              ? 'color-mix(in srgb, #0c0a08 82%, transparent)'
+              : 'color-mix(in srgb, #fffdf8 92%, transparent)',
+            color: dark ? '#f2efe8' : '#3d3628',
+            boxShadow: dark
+              ? '0 0 0 1px rgba(255,255,255,0.12)'
+              : '0 0 0 1px rgba(0,0,0,0.08)',
+          }}
+        >
           @{event.username}
         </span>
       ) : null}
@@ -98,7 +110,15 @@ function PixelReaction({ event }: { event: ReactionEvent }) {
   )
 }
 
-function Column({ side, items }: { side: 'left' | 'right'; items: ReactionEvent[] }) {
+function Column({
+  side,
+  items,
+  dark,
+}: {
+  side: 'left' | 'right'
+  items: ReactionEvent[]
+  dark?: boolean
+}) {
   return (
     <div
       className={`pointer-events-none absolute inset-y-0 z-30 flex w-12 flex-col-reverse items-center gap-2 pb-3 ${
@@ -109,7 +129,7 @@ function Column({ side, items }: { side: 'left' | 'right'; items: ReactionEvent[
       <AnimatePresence>
         {items.map((e) => (
           <motion.div key={e.key} layout exit={{ opacity: 0, scale: 0.6 }}>
-            <PixelReaction event={e} />
+            <PixelReaction event={e} dark={dark} />
           </motion.div>
         ))}
       </AnimatePresence>
@@ -124,16 +144,19 @@ function Column({ side, items }: { side: 'left' | 'right'; items: ReactionEvent[
 export function SpectatorReactionColumns({
   events,
   boardOrientation = 'white',
+  dark = false,
 }: {
   events: ReactionEvent[]
   boardOrientation?: ReactionSide
+  /** Dimensión oscura → chip oscuro + texto claro (y al revés en Primo). */
+  dark?: boolean
 }) {
   const left = events.filter((e) => visualColumn(e.targetColor, boardOrientation) === 'left')
   const right = events.filter((e) => visualColumn(e.targetColor, boardOrientation) === 'right')
   return (
     <>
-      <Column side="left" items={left} />
-      <Column side="right" items={right} />
+      <Column side="left" items={left} dark={dark} />
+      <Column side="right" items={right} dark={dark} />
     </>
   )
 }

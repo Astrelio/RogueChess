@@ -19,6 +19,7 @@ import { JokerTargetBanner } from '@/components/match/JokerTargetBanner'
 import { DimensionEnv } from '@/components/match/DimensionEnv'
 import { DimensionReveal } from '@/components/match/DimensionReveal'
 import { MatchMascotCoach } from '@/components/match/MatchMascotCoach'
+import { TutorialCoach } from '@/components/onboarding/TutorialCoach'
 import { JokerClockFx, type ClockFxEvent } from '@/components/match/JokerClockFx'
 import { JokerFxOverlay } from '@/components/match/JokerFxOverlay'
 import { MatchToast } from '@/components/match/MatchToast'
@@ -33,13 +34,17 @@ import { MONOLITH_HOURGLASS_BG, RUINED_DEBRIS_BG } from '@/lib/boardDecor'
 import { piecesForDimension } from '@/lib/dimPieces'
 import {
   portalReady,
+  type MatchArrowsPayload,
   type MatchBoardSnapshot,
   type MatchEmotePayload,
+  type MatchJokerAimPayload,
   type MatchJokerFxPayload,
   type PieceDragPayload,
   type ShopReadyPayload,
   type SpectatorEmojiPayload,
 } from '@/lib/portal'
+
+type BoardArrow = { startSquare: string; endSquare: string; color: string }
 import { previewAparicionFen, previewMorsmordreFen, previewMultijugosFen, previewRemovePieceFen } from '@/lib/jokerOptimistic'
 import { fenHideEnemyInvisible } from '@/lib/invisibleFen'
 import {
@@ -54,6 +59,17 @@ import {
   getJokerFxSpec,
   type JokerFxKind,
 } from '@/lib/jokerFx'
+import {
+  fenPieceCount,
+  playLoseSound,
+  playMatchEndNeutralSound,
+  playMoveSound,
+  playPhaseSound,
+  playShopPhaseSound,
+  playResignSound,
+  playSelectSound,
+  playWinSound,
+} from '@/lib/sounds'
 import { easeOut } from '@/lib/motion'
 import { isPhaseTransition, isStaleBoardPulse, isStaleMatchState, matchProgress } from '@/lib/matchFreshness'
 import { useLiveClocks } from '@/hooks/useLiveClocks'
@@ -111,6 +127,8 @@ export function MatchPage() {
   const [searchParams] = useSearchParams()
   const location = useLocation()
   const cheerUsername = (searchParams.get('cheer') || '').toLowerCase()
+  const isTutorial = searchParams.get('tutorial') === '1'
+  const [tutorialDone, setTutorialDone] = useState(false)
   const invitedUsername =
     typeof (location.state as { invitedUsername?: string } | null)?.invitedUsername === 'string'
       ? (location.state as { invitedUsername: string }).invitedUsername
@@ -151,6 +169,25 @@ export function MatchPage() {
       }) => Promise<void>)
     | null
   >(null)
+  const publishJokerAimRef = useRef<
+    | ((payload: {
+        matchId: string
+        uid: string
+        active: boolean
+        code?: string
+        squares?: string[]
+        selected?: string[]
+      }) => Promise<void>)
+    | null
+  >(null)
+  const publishArrowsRef = useRef<
+    | ((payload: {
+        matchId: string
+        uid: string
+        arrows: BoardArrow[]
+      }) => Promise<void>)
+    | null
+  >(null)
   const publishSpectatorEmojiRef = useRef<
     | ((payload: {
         matchId: string
@@ -167,6 +204,22 @@ export function MatchPage() {
   const [remoteDrag, setRemoteDrag] = useState<PieceDragPayload | null>(null)
   const [optimisticFen, setOptimisticFen] = useState<string | null>(null)
   const [aim, setAim] = useState<JokerAim | null>(null)
+  /** Aim remoto (espectadores): mismas partículas/tema que el caster. */
+  const [remoteAim, setRemoteAim] = useState<{
+    uid: string
+    squares: string[]
+    theme: ReturnType<typeof getJokerFxSpec>['theme']
+    code: string
+    selected: string[]
+  } | null>(null)
+  /** Flechas de análisis por jugador → solo espectadores las ven. */
+  const arrowsByUid = useRef(new Map<string, BoardArrow[]>())
+  const [spectatorArrows, setSpectatorArrows] = useState<BoardArrow[]>([])
+  const lastPublishedArrowsKey = useRef('')
+  /** Evita doble SFX (local + pulse/apply del mismo movimiento). */
+  const skipMoveSfxRef = useRef(false)
+  const heardFenRef = useRef<string | null>(null)
+  const matchEndSfxKey = useRef<string | null>(null)
   /** Pieza seleccionada para click-to-move + indicadores de destinos. */
   const [selectedSquare, setSelectedSquare] = useState<string | null>(null)
   const [justBoughtOfferId, setJustBoughtOfferId] = useState<string | null>(null)
@@ -616,6 +669,7 @@ export function MatchPage() {
   const onJokerFxPulse = useCallback(
     (p: MatchJokerFxPayload) => {
       if (user?.uid && p.uid === user.uid) return
+      setRemoteAim(null)
       if (p.fen) {
         setOptimisticFen(p.fen)
         setState((prev) => {
@@ -628,6 +682,39 @@ export function MatchPage() {
       playJokerFx(p.code, p.squares ?? [])
     },
     [user?.uid, playJokerFx],
+  )
+
+  const onJokerAimPulse = useCallback(
+    (p: MatchJokerAimPayload) => {
+      if (user?.uid && p.uid === user.uid) return
+      // Solo espectadores: el rival no ve el apuntado del oponente
+      const spectator = Boolean(stateRef.current && !stateRef.current.you)
+      if (!spectator) return
+      if (!p.active || !p.code) {
+        setRemoteAim((prev) => (prev && prev.uid === p.uid ? null : prev))
+        return
+      }
+      const spec = getJokerFxSpec(p.code)
+      setRemoteAim({
+        uid: p.uid,
+        squares: p.squares ?? [],
+        theme: spec.theme,
+        code: p.code,
+        selected: p.selected ?? [],
+      })
+    },
+    [user?.uid],
+  )
+
+  const onArrowsPulse = useCallback(
+    (p: MatchArrowsPayload) => {
+      if (user?.uid && p.uid === user.uid) return
+      const spectator = Boolean(stateRef.current && !stateRef.current.you)
+      if (!spectator) return
+      arrowsByUid.current.set(p.uid, p.arrows ?? [])
+      setSpectatorArrows([...arrowsByUid.current.values()].flat())
+    },
+    [user?.uid],
   )
 
   /** Shatter FX cuando una reina Multijugos desaparece del tablero. */
@@ -703,6 +790,23 @@ export function MatchPage() {
   /** Sin asiento en la partida → modo espectador (solo lectura). */
   const isSpectator = Boolean(state && !state.you)
 
+  // SFX de piezas: propia (skip) + rival / espectador vía FEN
+  useEffect(() => {
+    const fen = match?.fen
+    if (!fen) return
+    const prev = heardFenRef.current
+    heardFenRef.current = fen
+    if (!prev || prev === fen) return
+    if (skipMoveSfxRef.current) {
+      skipMoveSfxRef.current = false
+      return
+    }
+    const prevBoard = prev.split(' ')[0]
+    const nextBoard = fen.split(' ')[0]
+    if (prevBoard === nextBoard) return
+    playMoveSound({ capture: fenPieceCount(fen) < fenPieceCount(prev) })
+  }, [match?.fen])
+
   /** Color del jugador al que anima el espectador (?cheer=username). */
   const cheerTargetColor = useMemo((): 'white' | 'black' => {
     if (!state?.players?.length) return 'white'
@@ -775,6 +879,33 @@ export function MatchPage() {
   /** Reveal síncrono en el 1er paint (Primo) o el que dispara el efecto (otras dims). */
   const activeReveal = revealDimension ?? (openingPrimo ? 'primo' : null)
   const showMatchBoard = boardVisible && !activeReveal
+
+  // Samples Kenney: cambio de fase / tienda / fin de partida
+  useEffect(() => {
+    if (revealDimension) playPhaseSound()
+  }, [revealDimension])
+
+  useEffect(() => {
+    if (openingPrimo) playShopPhaseSound()
+  }, [openingPrimo])
+
+  useEffect(() => {
+    if (showShopIntro) playShopPhaseSound()
+  }, [showShopIntro])
+
+  useEffect(() => {
+    if (!isFinished || !match) return
+    const key = `${match.id}:${match.result ?? ''}:${match.winner_id ?? ''}`
+    if (matchEndSfxKey.current === key) return
+    matchEndSfxKey.current = key
+    if (isSpectator || match.result === 'draw' || match.result === 'abort') {
+      playMatchEndNeutralSound()
+      return
+    }
+    const won = Boolean(you?.profile_id && match.winner_id && match.winner_id === you.profile_id)
+    if (won) playWinSound()
+    else playLoseSound()
+  }, [isFinished, isSpectator, match, you?.profile_id])
 
   // Reveal: Primo al inicio (derivado); luego al cambiar dimensión / ciclo grieta
   useEffect(() => {
@@ -997,6 +1128,15 @@ export function MatchPage() {
     return set
   }, [state?.cells])
 
+  const pathBlockedSquares = useMemo(() => {
+    const set = new Set<string>()
+    for (const c of state?.cells ?? []) {
+      if (c.is_active === false) continue
+      if (c.effect === 'ruined') set.add(String(c.square).trim())
+    }
+    return set
+  }, [state?.cells])
+
   const ghostActive = useMemo(() => {
     return (state?.effects ?? []).some((e) => {
       const row = e as { kind?: string; is_active?: boolean; applied_by?: string }
@@ -1025,6 +1165,7 @@ export function MatchPage() {
       color: you.color,
       dimension: match.current_dimension,
       blocked: blockedSquares,
+      pathBlocked: pathBlockedSquares,
       ghostActive,
       giratiempoBlockCaptures: Boolean(
         youExt.giratiempo_active && (youExt.giratiempo_captures ?? 0) >= 1,
@@ -1041,6 +1182,7 @@ export function MatchPage() {
     isFinished,
     optimisticFen,
     blockedSquares,
+    pathBlockedSquares,
     ghostActive,
   ])
 
@@ -1074,6 +1216,62 @@ export function MatchPage() {
     const spec = getJokerFxSpec(aim.mode.code)
     return { squares, theme: spec.theme, code: aim.mode.code }
   }, [aim, jokerHints])
+
+  /** Local (jugador) o remoto (espectador): mismo overlay de partículas por comodín. */
+  const displayJokerAim = jokerAimAura ?? (isSpectator ? remoteAim : null)
+  const hadPublishedAim = useRef(false)
+
+  // Publicar aim → espectadores ven partículas / casillas en vivo
+  useEffect(() => {
+    if (isSpectator || !id || !user?.uid) return
+    if (!aim) {
+      if (!hadPublishedAim.current) return
+      hadPublishedAim.current = false
+      void publishJokerAimRef.current?.({
+        matchId: id,
+        uid: user.uid,
+        active: false,
+      })
+      return
+    }
+    hadPublishedAim.current = true
+    void publishJokerAimRef.current?.({
+      matchId: id,
+      uid: user.uid,
+      active: true,
+      code: aim.mode.code,
+      squares: jokerAimAura?.squares ?? [],
+      selected: aim.squares,
+    })
+  }, [aim, jokerAimAura, isSpectator, id, user?.uid])
+
+  // Limpia flechas remotas al cambiar de partida
+  useEffect(() => {
+    arrowsByUid.current.clear()
+    setSpectatorArrows([])
+    setRemoteAim(null)
+    lastPublishedArrowsKey.current = ''
+    heardFenRef.current = null
+    skipMoveSfxRef.current = false
+    matchEndSfxKey.current = null
+  }, [id])
+
+  const publishLocalArrows = useCallback(
+    (arrows: BoardArrow[]) => {
+      if (isSpectator || !id || !user?.uid) return
+      const key = arrows
+        .map((a) => `${a.startSquare}>${a.endSquare}:${a.color}`)
+        .join('|')
+      if (key === lastPublishedArrowsKey.current) return
+      lastPublishedArrowsKey.current = key
+      void publishArrowsRef.current?.({
+        matchId: id,
+        uid: user.uid,
+        arrows,
+      })
+    },
+    [isSpectator, id, user?.uid],
+  )
 
   const dragSquareStyles = useMemo(() => {
     const styles: Record<string, React.CSSProperties> = {}
@@ -1166,6 +1364,22 @@ export function MatchPage() {
               : 'inset 0 0 0 2px rgba(180, 150, 60, 0.7)',
         }
       })
+    } else if (isSpectator && remoteAim) {
+      for (const sq of remoteAim.squares) {
+        styles[sq] = {
+          ...(styles[sq] ?? {}),
+          ...indicatorStyle('joker_empty'),
+        }
+      }
+      remoteAim.selected.forEach((sq, i) => {
+        styles[sq] = {
+          ...(styles[sq] ?? {}),
+          boxShadow:
+            i === 0
+              ? 'inset 0 0 0 2px rgba(212, 175, 55, 0.85)'
+              : 'inset 0 0 0 2px rgba(180, 150, 60, 0.7)',
+        }
+      })
     }
 
     if (selectedSquare && !aim) {
@@ -1204,6 +1418,8 @@ export function MatchPage() {
   }, [
     remoteDrag,
     aim,
+    remoteAim,
+    isSpectator,
     state?.cells,
     boardFx,
     you?.id,
@@ -1247,6 +1463,7 @@ export function MatchPage() {
 
   function startLocalDrag(from: string, piece: string) {
     if (!id) return
+    playSelectSound()
     setSelectedSquare(from)
     localDrag.current = { from, piece }
     publishDragRef.current?.({
@@ -1291,6 +1508,7 @@ export function MatchPage() {
         return
       }
       if (piece && piece.color === me) {
+        playSelectSound()
         setSelectedSquare(square)
         return
       }
@@ -1298,7 +1516,10 @@ export function MatchPage() {
       return
     }
 
-    if (piece && piece.color === me) setSelectedSquare(square)
+    if (piece && piece.color === me) {
+      playSelectSound()
+      setSelectedSquare(square)
+    }
   }
 
   function hoverLocalDrag(square: string) {
@@ -1346,6 +1567,8 @@ export function MatchPage() {
         onShopReady={onShopReadyPulse}
         onEmote={onEmotePulse}
         onJokerFx={onJokerFxPulse}
+        onJokerAim={onJokerAimPulse}
+        onArrows={onArrowsPulse}
         onSpectatorEmoji={onSpectatorEmojiPulse}
         onChannelReady={onChannelReady}
         onPeerInfo={onPeerInfo}
@@ -1355,6 +1578,8 @@ export function MatchPage() {
         publishShopReadyRef={publishShopReadyRef}
         publishEmoteRef={publishEmoteRef}
         publishJokerFxRef={publishJokerFxRef}
+        publishJokerAimRef={publishJokerAimRef}
+        publishArrowsRef={publishArrowsRef}
         publishSpectatorEmojiRef={publishSpectatorEmojiRef}
         sendActivityRef={sendActivityRef}
       />
@@ -1389,11 +1614,11 @@ export function MatchPage() {
       return false
     }
 
-    // Trayectoria (no caballos): no cruzar quemadas
+    // Trayectoria: solo ruina corta el rayo (Bombarda se atraviesa)
     if (piece && piece.type !== 'n') {
       const path = pathBetweenClient(sourceSquare, dest)
-      if (path.some((sq) => blockedSquares.has(sq))) {
-        setError('La trayectoria cruza una zona quemada o en ruina')
+      if (path.some((sq) => pathBlockedSquares.has(sq))) {
+        setError('La trayectoria cruza una zona en ruina')
         return false
       }
     }
@@ -1468,10 +1693,11 @@ export function MatchPage() {
         dest,
         you.color,
         blockedSquares,
+        pathBlockedSquares,
       )
     }
     // Paso fantasma activo
-    const ghostActive = (state?.effects ?? []).some((e) => {
+    const ghostActiveMove = (state?.effects ?? []).some((e) => {
       const row = e as { kind?: string; is_active?: boolean; applied_by?: string }
       return (
         row.is_active !== false &&
@@ -1479,7 +1705,7 @@ export function MatchPage() {
         row.applied_by === you?.id
       )
     })
-    if (!previewFen && ghostActive && piece && you?.color) {
+    if (!previewFen && ghostActiveMove && piece && you?.color) {
       previewFen = applyGhostMoveFen(
         fenWithSideToMove(match!.fen, match!.turn_color),
         sourceSquare,
@@ -1487,6 +1713,7 @@ export function MatchPage() {
         you.color,
         blockedSquares,
         match!.current_dimension === 'gravitacional',
+        pathBlockedSquares,
       )
     }
     if (!previewFen) {
@@ -1497,6 +1724,11 @@ export function MatchPage() {
       )
       return false
     }
+
+    const destPiece = chess.get(dest as 'a1')
+    const isCapture = Boolean(destPiece && destPiece.color !== piece?.color)
+    skipMoveSfxRef.current = true
+    playMoveSound({ capture: isCapture })
 
     // Optimista LOCAL only — no publicar preview a Portal (ecos viejos reverían piezas)
     setSelectedSquare(null)
@@ -1899,6 +2131,7 @@ export function MatchPage() {
 
   async function resign() {
     if (isSpectator) return
+    playResignSound()
     const token = await getToken()
     if (!token) return
     const { state: s } = await api.resignMatch(token, id)
@@ -2117,7 +2350,10 @@ export function MatchPage() {
         {/* Fila: info dimensión (izq) + tablero (centro) + spacer der. equilibrado */}
         <div className="relative flex min-h-0 flex-1 items-stretch gap-4 lg:gap-6">
           {/* Panel dimensión — izquierda, legible */}
-          <aside className="hidden w-[min(100%,220px)] shrink-0 flex-col justify-center sm:flex lg:w-[240px]">
+          <aside
+            data-tutorial="dimension"
+            className="hidden w-[min(100%,220px)] shrink-0 flex-col justify-center sm:flex lg:w-[240px]"
+          >
             <p className="font-label text-[10px] uppercase tracking-[0.18em] text-[var(--color-primary)]">
               {isSpectator
                 ? 'Espectando'
@@ -2225,10 +2461,11 @@ export function MatchPage() {
                 </span>
               </div>
 
-              <div className={`rc-board-stage rc-board-stage--${dimMeta.id} relative`}>
+              <div data-tutorial="board" className={`rc-board-stage rc-board-stage--${dimMeta.id} relative`}>
                 <SpectatorReactionColumns
                   events={spectatorEmojis}
                   boardOrientation={boardOrientation}
+                  dark={darkDim}
                 />
                 <JokerClockFx event={clockFx} />
                 <Chessboard
@@ -2244,6 +2481,15 @@ export function MatchPage() {
                       !isFinished &&
                       !optimisticFen &&
                       !aim,
+                    allowDrawingArrows: !isSpectator,
+                    ...(isSpectator ? { arrows: spectatorArrows } : {}),
+                    clearArrowsOnClick: true,
+                    clearArrowsOnPositionChange: true,
+                    onArrowsChange: isSpectator
+                      ? undefined
+                      : ({ arrows }) => {
+                          publishLocalArrows(arrows as BoardArrow[])
+                        },
                     animationDurationInMs: optimisticFen ? 0 : 280,
                     squareStyles: dragSquareStyles,
                     pieces: dimPieces,
@@ -2278,13 +2524,16 @@ export function MatchPage() {
                 />
                 <JokerFxOverlay
                   orientation={boardOrientation}
-                  aim={jokerAimAura}
+                  aim={displayJokerAim}
                   burst={jokerBurst}
                 />
               </div>
 
               {/* Reloj propio */}
-              <div className="flex items-center justify-between gap-2 pt-1.5 font-label text-xs uppercase tracking-wider text-[var(--color-ink-muted)]">
+              <div
+                data-tutorial="clock"
+                className="flex items-center justify-between gap-2 pt-1.5 font-label text-xs uppercase tracking-wider text-[var(--color-ink-muted)]"
+              >
                 <span className={clocks.runningFor === myColor ? 'text-[var(--color-primary)]' : ''}>
                   {myPlayer?.display_name ?? (isSpectator ? (myColor === 'white' ? 'Blancas' : 'Negras') : 'Tú')}
                   {yourTurn ? ' · tu turno' : ''}
@@ -2307,7 +2556,7 @@ export function MatchPage() {
 
             {/* Comodines — ocultos en modo espectador */}
             {!isSpectator ? (
-              <div className="flex shrink-0 items-center gap-2 pt-0.5">
+              <div data-tutorial="jokers" className="flex shrink-0 items-center gap-2 pt-0.5">
                 <AnimatePresence mode="popLayout">
                   {yourInv.map((item) =>
                     item.joker ? (
@@ -2397,11 +2646,23 @@ export function MatchPage() {
             aria-hidden
           />
 
-          <MatchMascotCoach
-            dimensionId={dimMeta.id}
-            open={showMatchBoard && !isWaitingRival && !isFinished}
-            dark={darkDim}
-          />
+          {isTutorial && !isSpectator && !tutorialDone ? (
+            <TutorialCoach
+              open={showMatchBoard && !isWaitingRival && !isFinished}
+              dark={darkDim}
+              moved={Boolean(match && ((match.moves_in_phase ?? 0) > 0 || match.cycle_index > 0))}
+              jokerCount={yourInv.length}
+              dimensionId={dimMeta.id}
+              inShop={inShopPhase}
+              onDone={() => setTutorialDone(true)}
+            />
+          ) : (
+            <MatchMascotCoach
+              dimensionId={dimMeta.id}
+              open={showMatchBoard && !isWaitingRival && !isFinished}
+              dark={darkDim}
+            />
+          )}
         </div>
       </div>
 

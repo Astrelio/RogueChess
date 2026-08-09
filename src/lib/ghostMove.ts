@@ -2,7 +2,7 @@ import { Chess, type Square } from 'chess.js'
 
 /**
  * Preview local de Paso Fantasma (alineado con server/engine/moves tryGhostMove).
- * Atraviesa piezas en la trayectoria; zonas en `blocked` siguen cortando.
+ * Atraviesa piezas; `pathBlocked` (ruina) corta el rayo; `blocked` solo el aterrizaje.
  */
 export function applyGhostMoveFen(
   fen: string,
@@ -11,6 +11,7 @@ export function applyGhostMoveFen(
   moverColor: 'white' | 'black',
   blocked: Set<string> = new Set(),
   gravity = false,
+  pathBlocked: Set<string> = new Set(),
 ): string | null {
   let chess: Chess
   try {
@@ -50,7 +51,7 @@ export function applyGhostMoveFen(
   if (blocked.has(to)) return null
   const path = pathBetween(from, to)
   for (const sq of path) {
-    if (blocked.has(sq)) return null
+    if (pathBlocked.has(sq)) return null
     const inPath = chess.get(sq as Square)
     if (inPath?.type === 'k') return null
   }

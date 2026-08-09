@@ -1,6 +1,6 @@
 import { Chess, type PieceSymbol, type Square } from 'chess.js'
 import { chebyshev, fileOf, pathBetween, rankOf, squareAt } from './board.js'
-import { blockedSquares } from './dimensions.js'
+import { blockedSquares, pathBlockedSquares } from './dimensions.js'
 import type { Color, EngineContext } from './types.js'
 
 const KNIGHT_DELTAS: [number, number][] = [
@@ -45,13 +45,15 @@ export function isSquareAttacked(
     return false
   }
   const enemy = cjs(byColor)
-  const blocked = ctx ? blockedSquares(ctx as EngineContext) : new Set<string>()
+  const landing = ctx ? blockedSquares(ctx as EngineContext) : new Set<string>()
+  const pathBlock = ctx ? pathBlockedSquares(ctx as EngineContext) : new Set<string>()
   const gravity = ctx?.dimension === 'gravitacional'
 
   for (const row of chess.board()) {
     for (const p of row) {
       if (!p || p.color !== enemy) continue
-      if (pieceAttacksSquare(chess, p.square, square, p.type, blocked, gravity)) return true
+      if (pieceAttacksSquare(chess, p.square, square, p.type, landing, pathBlock, gravity))
+        return true
     }
   }
   return false
@@ -62,7 +64,8 @@ function pieceAttacksSquare(
   from: string,
   to: string,
   type: PieceSymbol,
-  blocked: Set<string>,
+  landing: Set<string>,
+  pathBlock: Set<string>,
   gravity: boolean,
 ): boolean {
   if (from === to) return false
@@ -82,13 +85,13 @@ function pieceAttacksSquare(
     }
     case 'r':
       if (df !== 0 && dr !== 0) return false
-      return sliderAttacks(chess, from, to, blocked, gravity)
+      return sliderAttacks(chess, from, to, landing, pathBlock, gravity)
     case 'b':
       if (adf !== adr) return false
-      return sliderAttacks(chess, from, to, blocked, gravity)
+      return sliderAttacks(chess, from, to, landing, pathBlock, gravity)
     case 'q':
       if (df !== 0 && dr !== 0 && adf !== adr) return false
-      return sliderAttacks(chess, from, to, blocked, gravity)
+      return sliderAttacks(chess, from, to, landing, pathBlock, gravity)
     default:
       return false
   }
@@ -98,13 +101,14 @@ function sliderAttacks(
   chess: Chess,
   from: string,
   to: string,
-  blocked: Set<string>,
+  landing: Set<string>,
+  pathBlock: Set<string>,
   gravity: boolean,
 ): boolean {
   if (gravity && chebyshev(from, to) > 3) return false
-  if (blocked.has(to)) return false
+  if (landing.has(to)) return false
   for (const sq of pathBetween(from, to)) {
-    if (blocked.has(sq)) return false
+    if (pathBlock.has(sq)) return false
     if (chess.get(sq as Square)) return false
   }
   return true
@@ -152,13 +156,14 @@ export function countAttackers(
     return 0
   }
   const enemy = cjs(byColor)
-  const blocked = ctx ? blockedSquares(ctx as EngineContext) : new Set<string>()
+  const landing = ctx ? blockedSquares(ctx as EngineContext) : new Set<string>()
+  const pathBlock = ctx ? pathBlockedSquares(ctx as EngineContext) : new Set<string>()
   const gravity = ctx?.dimension === 'gravitacional'
   let n = 0
   for (const row of chess.board()) {
     for (const p of row) {
       if (!p || p.color !== enemy) continue
-      if (pieceAttacksSquare(chess, p.square, square, p.type, blocked, gravity)) n++
+      if (pieceAttacksSquare(chess, p.square, square, p.type, landing, pathBlock, gravity)) n++
     }
   }
   return n

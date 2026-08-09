@@ -12,11 +12,23 @@ export function activeCellMap(ctx: EngineContext): Map<string, BoardCell> {
   return map
 }
 
-/** Casillas intransitables (ruina + quemadas por bombarda). */
+/** Casillas donde no se puede aterrizar (ruina + quemadas Bombarda). */
 export function blockedSquares(ctx: EngineContext): Set<string> {
   const out = new Set<string>()
   for (const c of ctx.cells) {
     if (c.is_active && (c.effect === 'ruined' || c.effect === 'burned')) out.add(c.square)
+  }
+  return out
+}
+
+/**
+ * Casillas que cortan la trayectoria de deslizantes.
+ * Solo ruina: las quemadas de Bombarda se pueden atravesar, no aterrizar.
+ */
+export function pathBlockedSquares(ctx: EngineContext): Set<string> {
+  const out = new Set<string>()
+  for (const c of ctx.cells) {
+    if (c.is_active && c.effect === 'ruined') out.add(c.square)
   }
   return out
 }
@@ -27,16 +39,17 @@ export type DimCheck = { ok: true } | { ok: false; reason: string }
  * Valida una jugada contra dimensión activa + celdas bloqueadas.
  */
 export function checkMoveAgainstBoard(ctx: EngineContext, move: Move): DimCheck {
-  const blocked = blockedSquares(ctx)
+  const landing = blockedSquares(ctx)
+  const pathBlock = pathBlockedSquares(ctx)
 
-  if (blocked.has(move.to)) {
+  if (landing.has(move.to)) {
     return { ok: false, reason: 'La casilla destino está quemada o en ruina' }
   }
 
   if (move.piece !== 'n' && chebyshev(move.from, move.to) > 1) {
     for (const sq of pathBetween(move.from, move.to)) {
-      if (blocked.has(sq)) {
-        return { ok: false, reason: 'La trayectoria cruza una zona quemada o en ruina' }
+      if (pathBlock.has(sq)) {
+        return { ok: false, reason: 'La trayectoria cruza una zona en ruina' }
       }
     }
   }

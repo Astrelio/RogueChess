@@ -8,7 +8,7 @@ import {
   pathBetween,
   ringsFrom,
 } from './board.js'
-import { blockedSquares } from './dimensions.js'
+import { blockedSquares, pathBlockedSquares } from './dimensions.js'
 import { applyMultijugosCollapse, cjs, colorInCheck, fenWithSideToMove } from './moves.js'
 import { emptyOps, type Color, type EngineContext, type EngineOps, type JokerResult } from './types.js'
 
@@ -450,12 +450,13 @@ function imperiusGeometry(
       return { ok: false, reason: 'pieza no controlable' }
   }
 
-  const blocked = blockedSquares(ctx)
-  if (blocked.has(to)) return { ok: false, reason: 'la casilla destino está destruida' }
+  const landing = blockedSquares(ctx)
+  if (landing.has(to)) return { ok: false, reason: 'la casilla destino está destruida' }
   if (type !== 'n') {
+    const pathBlock = pathBlockedSquares(ctx)
     for (const sq of pathBetween(from, to)) {
       if (chess.get(sq as Square)) return { ok: false, reason: 'trayectoria bloqueada' }
-      if (blocked.has(sq)) return { ok: false, reason: 'la trayectoria cruza una zona muerta' }
+      if (pathBlock.has(sq)) return { ok: false, reason: 'la trayectoria cruza una zona en ruina' }
     }
   }
   if (ctx.dimension === 'gravitacional' && ['q', 'r', 'b'].includes(type) && chebyshev(from, to) > 3) {

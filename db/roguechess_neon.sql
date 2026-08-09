@@ -1877,7 +1877,7 @@ BEGIN
       'ticas',
       'Oscar Ticas',
       'Audio',
-      'Programó el reproductor de música nativo.',
+      'Programó el reproductor de música nativo (aún en fase beta). También aportó al concepto de dimensiones y a varias mecánicas del juego.',
       '/devs/ticas.webp',
       4,
       TRUE

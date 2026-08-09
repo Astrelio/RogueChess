@@ -9,6 +9,7 @@ import { pathBetween, chebyshev, fileOf, rankOf, squareAt } from './board.js'
 import {
   activeCellMap,
   blockedSquares,
+  pathBlockedSquares,
   bloodChainRequiresCapture,
   bloodChainViolation,
   checkMoveAgainstBoard,
@@ -206,10 +207,11 @@ function tryGhostMove(
     return { ok: false, reason: 'Paso fantasma solo aplica a dama, torre, alfil o peón' }
   }
 
-  const blocked = blockedSquares(ctx)
-  if (blocked.has(to)) return { ok: false, reason: 'La casilla destino está destruida' }
+  const landing = blockedSquares(ctx)
+  const pathBlock = pathBlockedSquares(ctx)
+  if (landing.has(to)) return { ok: false, reason: 'La casilla destino está destruida' }
   for (const sq of pathBetween(from, to)) {
-    if (blocked.has(sq)) return { ok: false, reason: 'La trayectoria cruza una zona muerta' }
+    if (pathBlock.has(sq)) return { ok: false, reason: 'La trayectoria cruza una zona en ruina' }
     const inPath = chess.get(sq as Square)
     if (inPath?.type === 'k') return { ok: false, reason: 'No se puede atravesar un rey' }
   }
@@ -234,25 +236,33 @@ function tryGhostMove(
 
 /**
  * Peón bajo Espejo: `to` YA es el destino invertido.
- * GDD: avanzan hacia tu propio bando y coronan en tu fila de inicio.
- * Blancas → rank 1; negras → rank 8.
+ * Avanzan hacia el propio bando, pero no pueden entrar en la fila base
+ * (chess.js no admite peones ahí y coronar al instante rompía la partida).
  */
 function tryMirrorPawnMove(
   ctx: EngineContext,
   fen: string,
   from: string,
   to: string,
-  promotion?: PieceSymbol,
+  _promotion?: PieceSymbol,
 ): GhostAttempt {
   const chess = new Chess(fen)
   const df = fileOf(to) - fileOf(from)
   const dr = rankOf(to) - rankOf(from)
   const homeDir = ctx.moverColor === 'white' ? -1 : 1
   const doubleRank = ctx.moverColor === 'white' ? 7 : 2
-  const promoRank = ctx.moverColor === 'white' ? 1 : 8
+  const homeEdge = ctx.moverColor === 'white' ? 1 : 8
 
-  const blocked = blockedSquares(ctx)
-  if (blocked.has(to)) return { ok: false, reason: 'Espejo: la casilla destino está quemada o en ruina' }
+  const landing = blockedSquares(ctx)
+  const pathBlock = pathBlockedSquares(ctx)
+  if (landing.has(to)) return { ok: false, reason: 'Espejo: la casilla destino está quemada o en ruina' }
+
+  if (Number(to[1]) === homeEdge) {
+    return {
+      ok: false,
+      reason: 'Espejo: el peón no puede entrar en tu fila base',
+    }
+  }
 
   const target = chess.get(to as Square)
   const isPush = df === 0 && !target && (dr === homeDir || (dr === 2 * homeDir && Number(from[1]) === doubleRank))
@@ -269,17 +279,12 @@ function tryMirrorPawnMove(
 
   if (isPush && Math.abs(dr) === 2) {
     const mid = squareAt(fileOf(from), rankOf(from) + homeDir)
-    if (!mid || chess.get(mid as Square) || blocked.has(mid)) {
+    if (!mid || chess.get(mid as Square) || pathBlock.has(mid)) {
       return { ok: false, reason: 'Espejo: el doble paso está bloqueado' }
     }
   }
 
-  let promo: PieceSymbol | undefined
-  if (Number(to[1]) === promoRank) {
-    promo = promotion ?? 'q'
-  }
-
-  const nextFen = forcedMoveFen(chess, from, to, ctx.moverColor, promo)
+  const nextFen = forcedMoveFen(chess, from, to, ctx.moverColor, undefined)
   if (colorInCheck(nextFen, ctx.moverColor, ctx)) {
     return { ok: false, reason: 'Espejo: ese movimiento dejaría a tu rey en jaque' }
   }
@@ -465,24 +470,10 @@ export function applyPlayerMove(ctx: EngineContext, input: MoveInput): MoveResul
         return { ok: false, error: 'Giratiempo: solo se permite una captura' }
       }
       chess = new Chess(attempt.fen)
-      const afterPiece = chess.get(to as Square)
-      const didPromo = Boolean(afterPiece && afterPiece.type !== 'p')
-      san = didPromo ? `${to}=${afterPiece!.type.toUpperCase()}✦` : `${from}-${to}✦`
-      uci = from + to + (didPromo ? afterPiece!.type : '')
+      san = `${from}-${to}✦`
+      uci = from + to
       isCapture = attempt.captured
-      if (didPromo) {
-        ops.flagOps.push({
-          op: 'upsert',
-          pieceUid: `wp:${to}:${ctx.ply + 1}`,
-          color: ctx.moverColor,
-          kind: afterPiece!.type,
-          square: to,
-          wasPawn: true,
-        })
-        ops.events.push(`Espejo: peón corona en tu fila de inicio (${to})`)
-      } else {
-        ops.events.push('Espejo: el peón avanza hacia tu propio bando')
-      }
+      ops.events.push('Espejo: el peón avanza hacia tu propio bando')
     } else {
       // Espejo peón falló: ¿paso fantasma puede salvar la jugada?
       const mirrorFailReason = attempt.reason

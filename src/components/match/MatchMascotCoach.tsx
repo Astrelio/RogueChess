@@ -14,7 +14,7 @@ const TIPS: Record<DimensionTheme, string[]> = {
   espejo: [
     'Espejo: lo que mueves se invierte en el tablero.',
     'Derecha es izquierda, arriba es abajo. Piensa al revés.',
-    'Los peones caminan hacia tu propio bando. ¡Ojo al coronar!',
+    'Los peones caminan hacia tu propio bando, pero no entran en tu fila base.',
     'Antes de soltar, mira el destino invertido. El espejo no perdona.',
     'Si te mareas, es normal: el tablero también está del revés.',
   ],

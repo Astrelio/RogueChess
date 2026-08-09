@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect, useId, useRef, useState } from 'react'
 import { useAuth } from '@/auth/AuthContext'
 import { PortalLiveChrome } from '@/components/PortalLiveChrome'
+import { UiSoundBridge } from '@/components/UiSoundBridge'
 import { LobbyPresenceProvider } from '@/hooks/useLobbyPresence'
 import {
   PortalInboxProvider,
@@ -10,6 +11,8 @@ import {
   type PortalToast,
 } from '@/hooks/usePortalInbox'
 import { MatchmakingProvider, useMatchmaking } from '@/components/MatchmakingProvider'
+import { SettingsModal } from '@/components/SettingsModal'
+import { TOUR_MENU_EVENT } from '@/components/onboarding/LobbyTour'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { pageFade, easeOut } from '@/lib/motion'
@@ -91,6 +94,7 @@ function ShellChrome({
       )}
     >
       <PortalLiveChrome />
+      <UiSoundBridge />
       {!immersive ? (
         <motion.header
           initial={{ opacity: 0, y: -10 }}
@@ -372,7 +376,9 @@ function UserMenu({
   const { profile, user, logout } = useAuth()
   const location = useLocation()
   const [open, setOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
+  const tourLockRef = useRef(false)
   const menuId = useId()
 
   const avatarUrl = profile?.avatar_url || user?.photoURL || null
@@ -384,9 +390,11 @@ function UserMenu({
   useEffect(() => {
     if (!open) return
     function onDoc(e: MouseEvent) {
+      if (tourLockRef.current) return
       if (!rootRef.current?.contains(e.target as Node)) setOpen(false)
     }
     function onKey(e: KeyboardEvent) {
+      if (tourLockRef.current) return
       if (e.key === 'Escape') setOpen(false)
     }
     document.addEventListener('mousedown', onDoc)
@@ -397,12 +405,24 @@ function UserMenu({
     }
   }, [open])
 
+  // El LobbyTour fuerza el menú abierto para señalar Ranking / Comodines.
+  useEffect(() => {
+    function onTourMenu(e: Event) {
+      const wantOpen = Boolean((e as CustomEvent).detail)
+      tourLockRef.current = wantOpen
+      setOpen(wantOpen)
+    }
+    window.addEventListener(TOUR_MENU_EVENT, onTourMenu)
+    return () => window.removeEventListener(TOUR_MENU_EVENT, onTourMenu)
+  }, [])
+
   useEffect(() => {
     setOpen(false)
   }, [location.pathname])
 
   return (
     <div ref={rootRef} className="relative">
+      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       <motion.button
         type="button"
         whileHover={{ y: -2, scale: 1.06 }}
@@ -412,6 +432,7 @@ function UserMenu({
         aria-controls={menuId}
         aria-label="Menú de perfil"
         title="Menú · Comodines, ranking y más"
+        data-tour="nav-profile"
         onClick={() => {
           setOpen((v) => !v)
           if (inboxBadge > 0) onClearInbox?.()
@@ -471,10 +492,10 @@ function UserMenu({
               >
                 {playBusy ? 'Buscando…' : 'Jugar'}
               </MenuAction>
-              <MenuLink to="/comodines" onNavigate={() => setOpen(false)}>
+              <MenuLink to="/comodines" dataTour="nav-jokers" onNavigate={() => setOpen(false)}>
                 Comodines
               </MenuLink>
-              <MenuLink to="/ranking" onNavigate={() => setOpen(false)}>
+              <MenuLink to="/ranking" dataTour="nav-ranking" onNavigate={() => setOpen(false)}>
                 Ranking
               </MenuLink>
               <MenuLink to="/devs" onNavigate={() => setOpen(false)}>
@@ -483,6 +504,14 @@ function UserMenu({
               <MenuLink to="/perfil" onNavigate={() => setOpen(false)}>
                 Perfil
               </MenuLink>
+              <MenuAction
+                onClick={() => {
+                  setOpen(false)
+                  setSettingsOpen(true)
+                }}
+              >
+                Ajustes
+              </MenuAction>
               <li>
                 <button
                   type="button"
@@ -508,10 +537,12 @@ function MenuLink({
   to,
   children,
   onNavigate,
+  dataTour,
 }: {
   to: string
   children: React.ReactNode
   onNavigate: () => void
+  dataTour?: string
 }) {
   return (
     <li>
@@ -528,7 +559,10 @@ function MenuLink({
           )
         }
       >
-        {children}
+        {/* data-tour en el texto: el spotlight encaja en la etiqueta, no en todo el ancho del menú */}
+        <span data-tour={dataTour} className="inline-block">
+          {children}
+        </span>
       </NavLink>
     </li>
   )

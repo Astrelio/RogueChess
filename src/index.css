@@ -761,3 +761,33 @@
 .rc-shop--bluriel {
   --rc-shop-accent: #b8a0d8;
 }
+
+/* Tutorial en partida: foco suave sobre el elemento del paso (no bloquea clicks) */
+.rc-tutorial-spotlight {
+  box-shadow: 0 0 0 9999px rgba(12, 9, 3, 0.34);
+  transition:
+    top 0.35s ease,
+    left 0.35s ease,
+    width 0.35s ease,
+    height 0.35s ease;
+}
+
+/* Tour de onboarding: recorte spotlight (sombra gigante = máscara) + anillo */
+.rc-tour-spotlight {
+  box-shadow:
+    0 0 0 9999px rgba(12, 9, 3, 0.55),
+    0 0 24px rgba(212, 175, 55, 0.35);
+  outline: 2px solid color-mix(in srgb, var(--color-primary) 85%, transparent);
+  outline-offset: 2px;
+  animation: rc-tour-pulse 2.2s ease-in-out infinite;
+}
+
+@keyframes rc-tour-pulse {
+  0%,
+  100% {
+    outline-color: color-mix(in srgb, var(--color-primary) 85%, transparent);
+  }
+  50% {
+    outline-color: color-mix(in srgb, var(--color-primary) 40%, transparent);
+  }
+}

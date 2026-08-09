@@ -3,6 +3,7 @@ import { motion } from 'framer-motion'
 import { Heart } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useAuth } from '@/auth/AuthContext'
+import { BackToHome } from '@/components/BackToHome'
 import { PageTransition } from '@/components/PageTransition'
 import { riseItem, stagger } from '@/lib/motion'
 import type { Developer } from '@/types'
@@ -54,6 +55,9 @@ export function DevsPage() {
   return (
     <PageTransition>
       <motion.section variants={stagger} initial="initial" animate="animate">
+        <motion.div variants={riseItem} className="mb-4">
+          <BackToHome />
+        </motion.div>
         <motion.h1 variants={riseItem} className="font-display text-2xl text-[var(--color-primary)] sm:text-3xl">
           Equipo
         </motion.h1>

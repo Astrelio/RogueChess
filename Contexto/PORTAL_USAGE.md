@@ -77,6 +77,8 @@ Docs: https://docs.useportal.co/
 - Emotes efímeros `match_emote` (👍😮🔥♟️) en partida
 - `shop_ready` ephemeral al marcar listo en tienda
 - `match_joker_fx` ephemeral al castear (code + squares + `fen?`) → peers FX + tablero preview sin esperar Neon
+- `match_joker_aim` ephemeral al apuntar (code + squares hints + selected) → **solo espectadores** ven partículas/casillas del aim (el rival no)
+- `match_arrows` ephemeral (flechas right-click de análisis) → **solo espectadores**; jugadores dibujan local y publican; rivales ignoran el payload
 
 ### Config / deploy
 - `portal.config.ts` — auth JWKS Firebase, canales, notify, extension

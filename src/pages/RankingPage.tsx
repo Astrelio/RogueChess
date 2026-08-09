@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { api } from '@/lib/api'
 import { useAuth } from '@/auth/AuthContext'
+import { BackToHome } from '@/components/BackToHome'
 import { PageTransition } from '@/components/PageTransition'
 import { DuelBadge, SearchingBadge } from '@/components/DuelBadge'
 import { useChallengePlayer } from '@/hooks/useChallengePlayer'
@@ -115,6 +116,9 @@ export function RankingPage() {
   return (
     <PageTransition>
       <motion.section variants={stagger} initial="initial" animate="animate">
+        <motion.div variants={riseItem} className="mb-4">
+          <BackToHome />
+        </motion.div>
         <motion.h1 variants={riseItem} className="font-display text-2xl text-[var(--color-primary)] sm:text-3xl">
           Tabla de clasificación
         </motion.h1>

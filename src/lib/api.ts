@@ -167,10 +167,14 @@ export const api = {
   cancelQueue: (token: string) =>
     request<{ ok: boolean }>('/api/matches/queue/cancel', { method: 'POST', token }),
 
-  queueFallbackBot: (token: string) =>
+  queueFallbackBot: (token: string, opts?: { tutorial?: boolean }) =>
     request<{ match: { id: string }; state: MatchState; vsBot: boolean }>(
       '/api/matches/queue/bot',
-      { method: 'POST', token },
+      {
+        method: 'POST',
+        token,
+        ...(opts?.tutorial ? { body: JSON.stringify({ tutorial: true }) } : {}),
+      },
     ),
 
   getMatch: (token: string, id: string) =>

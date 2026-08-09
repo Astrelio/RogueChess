@@ -3,8 +3,10 @@ import type { MutableRefObject } from 'react'
 import { useMatchRealtime } from '@/hooks/useMatchRealtime'
 import { useAuth } from '@/auth/AuthContext'
 import type {
+  MatchArrowsPayload,
   MatchBoardSnapshot,
   MatchEmotePayload,
+  MatchJokerAimPayload,
   MatchJokerFxPayload,
   PieceDragPayload,
   ShopReadyPayload,
@@ -34,6 +36,19 @@ type PublishJokerFxFn = (payload: {
   squares: string[]
   fen?: string
 }) => Promise<void>
+type PublishJokerAimFn = (payload: {
+  matchId: string
+  uid: string
+  active: boolean
+  code?: string
+  squares?: string[]
+  selected?: string[]
+}) => Promise<void>
+type PublishArrowsFn = (payload: {
+  matchId: string
+  uid: string
+  arrows: Array<{ startSquare: string; endSquare: string; color: string }>
+}) => Promise<void>
 type PublishSpectatorEmojiFn = (payload: {
   matchId: string
   uid: string
@@ -60,6 +75,8 @@ export function MatchPortalBridge({
   onShopReady,
   onEmote,
   onJokerFx,
+  onJokerAim,
+  onArrows,
   onSpectatorEmoji,
   onChannelReady,
   onPeerInfo,
@@ -69,6 +86,8 @@ export function MatchPortalBridge({
   publishShopReadyRef,
   publishEmoteRef,
   publishJokerFxRef,
+  publishJokerAimRef,
+  publishArrowsRef,
   publishSpectatorEmojiRef,
   sendActivityRef,
 }: {
@@ -81,6 +100,8 @@ export function MatchPortalBridge({
   onShopReady?: (p: ShopReadyPayload) => void
   onEmote?: (p: MatchEmotePayload) => void
   onJokerFx?: (p: MatchJokerFxPayload) => void
+  onJokerAim?: (p: MatchJokerAimPayload) => void
+  onArrows?: (p: MatchArrowsPayload) => void
   onSpectatorEmoji?: (p: SpectatorEmojiPayload) => void
   onChannelReady?: () => void
   onPeerInfo?: (info: MatchPortalPeerInfo) => void
@@ -90,6 +111,8 @@ export function MatchPortalBridge({
   publishShopReadyRef?: MutableRefObject<PublishShopReadyFn | null>
   publishEmoteRef?: MutableRefObject<PublishEmoteFn | null>
   publishJokerFxRef?: MutableRefObject<PublishJokerFxFn | null>
+  publishJokerAimRef?: MutableRefObject<PublishJokerAimFn | null>
+  publishArrowsRef?: MutableRefObject<PublishArrowsFn | null>
   publishSpectatorEmojiRef?: MutableRefObject<PublishSpectatorEmojiFn | null>
   sendActivityRef?: MutableRefObject<((kind: string) => void) | null>
 }) {
@@ -114,6 +137,8 @@ export function MatchPortalBridge({
     publishShopReady,
     publishEmote,
     publishJokerFx,
+    publishJokerAim,
+    publishArrows,
     publishSpectatorEmoji,
     sendActivity,
     presence,
@@ -128,6 +153,8 @@ export function MatchPortalBridge({
     onShopReady,
     onEmote,
     onJokerFx,
+    onJokerAim,
+    onArrows,
     onSpectatorEmoji,
     onChannelReady,
   })
@@ -177,6 +204,22 @@ export function MatchPortalBridge({
       publishJokerFxRef.current = null
     }
   }, [publishJokerFx, publishJokerFxRef])
+
+  useEffect(() => {
+    if (!publishJokerAimRef) return
+    publishJokerAimRef.current = publishJokerAim
+    return () => {
+      publishJokerAimRef.current = null
+    }
+  }, [publishJokerAim, publishJokerAimRef])
+
+  useEffect(() => {
+    if (!publishArrowsRef) return
+    publishArrowsRef.current = publishArrows
+    return () => {
+      publishArrowsRef.current = null
+    }
+  }, [publishArrows, publishArrowsRef])
 
   useEffect(() => {
     if (!publishSpectatorEmojiRef) return

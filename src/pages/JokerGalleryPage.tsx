@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { JokerCard } from '@/components/jokers/JokerCard'
+import { BackToHome } from '@/components/BackToHome'
 import { PageTransition } from '@/components/PageTransition'
 import { api } from '@/lib/api'
 import {
@@ -44,6 +45,9 @@ export function JokerGalleryPage() {
   return (
     <PageTransition>
       <motion.section variants={stagger} initial="initial" animate="animate">
+        <motion.div variants={riseItem} className="mb-4">
+          <BackToHome />
+        </motion.div>
         <motion.p
           variants={riseItem}
           className="font-label text-[10px] uppercase tracking-[0.22em] text-[var(--color-primary)]"

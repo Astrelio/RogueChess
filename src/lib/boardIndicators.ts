@@ -62,17 +62,28 @@ export function blockedFromCells(cells: BoardCell[] | undefined): Set<string> {
   return set
 }
 
+/** Solo ruina corta trayectoria; Bombarda (burned) se atraviesa. */
+export function pathBlockedFromCells(cells: BoardCell[] | undefined): Set<string> {
+  const set = new Set<string>()
+  for (const c of cells ?? []) {
+    if (c.is_active === false) continue
+    if (c.effect === 'ruined') set.add(String(c.square).trim())
+  }
+  return set
+}
+
 function destOk(
   from: string,
   to: string,
   pieceType: string,
-  blocked: Set<string>,
+  landing: Set<string>,
+  pathBlock: Set<string>,
   gravity: boolean,
 ): boolean {
-  if (blocked.has(to)) return false
+  if (landing.has(to)) return false
   if (pieceType !== 'n') {
     for (const sq of pathBetween(from, to)) {
-      if (blocked.has(sq)) return false
+      if (pathBlock.has(sq)) return false
     }
   }
   if (gravity && (pieceType === 'q' || pieceType === 'r' || pieceType === 'b')) {
@@ -86,7 +97,10 @@ export type LegalMovesOpts = {
   from: string
   color: 'white' | 'black'
   dimension: string
+  /** No aterrizar (quemadas + ruina). */
   blocked: Set<string>
+  /** Corta trayectoria (solo ruina). */
+  pathBlocked?: Set<string>
   ghostActive?: boolean
   giratiempoBlockCaptures?: boolean
 }
@@ -99,8 +113,16 @@ export function legalInteractionSquares(opts: LegalMovesOpts): {
   moves: string[]
   captures: string[]
 } {
-  const { fen, from, color, dimension, blocked, ghostActive, giratiempoBlockCaptures } =
-    opts
+  const {
+    fen,
+    from,
+    color,
+    dimension,
+    blocked,
+    pathBlocked = new Set(),
+    ghostActive,
+    giratiempoBlockCaptures,
+  } = opts
   let chess: Chess
   try {
     chess = new Chess(fen)
@@ -125,7 +147,7 @@ export function legalInteractionSquares(opts: LegalMovesOpts): {
   }>
 
   for (const m of legal) {
-    if (!destOk(m.from, m.to, piece.type, blocked, gravity)) continue
+    if (!destOk(m.from, m.to, piece.type, blocked, pathBlocked, gravity)) continue
     const interact = mirror ? mirrorCommand(m.from, m.to) : m.to
     if (!interact || interact === m.from) continue
     cands.push({
@@ -139,7 +161,7 @@ export function legalInteractionSquares(opts: LegalMovesOpts): {
   if (mirror && piece.type === 'p') {
     for (const sq of allSquares()) {
       if (sq === from) continue
-      const fen2 = applyMirrorPawnFen(fen, from, sq, color, blocked)
+      const fen2 = applyMirrorPawnFen(fen, from, sq, color, blocked, pathBlocked)
       if (!fen2) continue
       cands.push({
         interact: sq,
@@ -152,7 +174,7 @@ export function legalInteractionSquares(opts: LegalMovesOpts): {
   if (ghostActive) {
     for (const sq of allSquares()) {
       if (sq === from) continue
-      const fen2 = applyGhostMoveFen(fen, from, sq, color, blocked, gravity)
+      const fen2 = applyGhostMoveFen(fen, from, sq, color, blocked, gravity, pathBlocked)
       if (!fen2) continue
       const capture = Boolean(chess.get(sq as Square))
       const interact = mirror ? mirrorCommand(from, sq) : sq
@@ -213,6 +235,7 @@ export function jokerTargetSquares(opts: JokerHighlightOpts): {
   const them = color === 'white' ? 'b' : 'w'
   const gravity = dimension === 'gravitacional'
   const blocked = blockedFromCells(cells)
+  const pathBlocked = pathBlockedFromCells(cells)
   const anomaly = new Set(
     (cells ?? [])
       .filter((c) => c.is_active !== false && c.effect !== 'none')
@@ -281,7 +304,7 @@ export function jokerTargetSquares(opts: JokerHighlightOpts): {
       const dests: string[] = []
       for (const to of allSquares()) {
         if (to === from) continue
-        if (!imperiusGeoOk(chess, from, to, piece.type, them, blocked, gravity)) continue
+        if (!imperiusGeoOk(chess, from, to, piece.type, them, blocked, pathBlocked, gravity)) continue
         dests.push(to)
       }
       // Destinos: vacíos o piezas (fuego amigo) — marcar capturas como hostile, resto empty/ally
@@ -307,7 +330,8 @@ function imperiusGeoOk(
   to: string,
   type: string,
   pieceColor: 'w' | 'b',
-  blocked: Set<string>,
+  landing: Set<string>,
+  pathBlock: Set<string>,
   gravity: boolean,
 ): boolean {
   const df = to.charCodeAt(0) - from.charCodeAt(0)
@@ -349,11 +373,11 @@ function imperiusGeoOk(
       return false
   }
 
-  if (blocked.has(to)) return false
+  if (landing.has(to)) return false
   if (type !== 'n') {
     for (const sq of pathBetween(from, to)) {
       if (chess.get(sq as Square)) return false
-      if (blocked.has(sq)) return false
+      if (pathBlock.has(sq)) return false
     }
   }
   if (gravity && (type === 'q' || type === 'r' || type === 'b') && chebyshev(from, to) > 3) {

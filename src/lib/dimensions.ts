@@ -44,7 +44,7 @@ const DIMENSIONS: Record<DimensionTheme, DimensionInfo> = {
     title: 'Dimensión Espejo',
     eyebrow: 'Grieta · Reflexión',
     blurb:
-      'Todo se invierte: derecha es izquierda, arriba es abajo. Los peones avanzan hacia tu propio bando (y pueden coronar ahí).',
+      'Todo se invierte: derecha es izquierda, arriba es abajo. Los peones avanzan hacia tu propio bando (sin entrar en tu fila base).',
     board: { light: '#e8eef5', dark: '#5a7390', frame: 'rgba(140,190,230,0.55)' },
   },
   bluriel: {

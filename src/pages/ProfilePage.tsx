@@ -3,6 +3,7 @@ import { Navigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { useAuth } from '@/auth/AuthContext'
 import { api } from '@/lib/api'
+import { BackToHome } from '@/components/BackToHome'
 import { PageTransition } from '@/components/PageTransition'
 import { presenceLabel } from '@/lib/utils'
 import { riseItem, stagger } from '@/lib/motion'
@@ -77,6 +78,9 @@ export function ProfilePage() {
         animate="animate"
         className="grid gap-10 lg:grid-cols-2"
       >
+        <motion.div variants={riseItem} className="lg:col-span-2">
+          <BackToHome />
+        </motion.div>
         <motion.div variants={riseItem}>
           <h1 className="font-display text-2xl text-[var(--color-primary)] sm:text-3xl">Tu perfil</h1>
           <p className="mt-2 text-sm text-[var(--color-ink-muted)]">

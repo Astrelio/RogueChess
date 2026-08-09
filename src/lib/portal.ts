@@ -153,6 +153,29 @@ export type MatchJokerFxPayload = {
   at: number
 }
 
+/** Aim de comodín (ephemeral) — espectadores/rival ven partículas y casillas. */
+export type MatchJokerAimPayload = {
+  type: 'match_joker_aim'
+  matchId: string
+  uid: string
+  active: boolean
+  code?: string
+  /** Casillas con aura/partículas (hints). */
+  squares?: string[]
+  /** Casillas ya elegidas en multi-target. */
+  selected?: string[]
+  at: number
+}
+
+/** Flechas de análisis (ephemeral) — para espectadores. */
+export type MatchArrowsPayload = {
+  type: 'match_arrows'
+  matchId: string
+  uid: string
+  arrows: Array<{ startSquare: string; endSquare: string; color: string }>
+  at: number
+}
+
 /** Emoji de espectador. Neon valida cooldown vía REST antes de publicar. */
 export type SpectatorEmojiPayload = {
   type: 'spectator_emoji'
@@ -176,4 +199,6 @@ export type MatchChannelPayload =
   | ShopReadyPayload
   | MatchEmotePayload
   | MatchJokerFxPayload
+  | MatchJokerAimPayload
+  | MatchArrowsPayload
   | SpectatorEmojiPayload

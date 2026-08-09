@@ -29,7 +29,7 @@ export function mirrorTarget(from: string, to: string, _pieceKind?: string): str
 
 /**
  * Aplica en el cliente un peón bajo Espejo (hacia el propio bando) cuando
- * chess.js rechaza el destino invertido.
+ * chess.js rechaza el destino invertido. Sin coronación en fila propia.
  */
 export function applyMirrorPawnFen(
   fen: string,
@@ -37,6 +37,7 @@ export function applyMirrorPawnFen(
   to: string,
   color: 'white' | 'black',
   blocked?: Set<string>,
+  pathBlocked?: Set<string>,
 ): string | null {
   try {
     const chess = new Chess(fen)
@@ -47,10 +48,11 @@ export function applyMirrorPawnFen(
     const dr = rankOf(to) - rankOf(from)
     const homeDir = color === 'white' ? -1 : 1
     const doubleRank = color === 'white' ? 7 : 2
-    const promoRank = color === 'white' ? 1 : 8
+    const homeEdge = color === 'white' ? 1 : 8
     const target = chess.get(to as Square)
 
     if (blocked?.has(to)) return null
+    if (Number(to[1]) === homeEdge) return null
 
     const isPush =
       df === 0 && !target && (dr === homeDir || (dr === 2 * homeDir && Number(from[1]) === doubleRank))
@@ -65,13 +67,12 @@ export function applyMirrorPawnFen(
     if (isPush && Math.abs(dr) === 2) {
       const mid = squareAt(fileOf(from), rankOf(from) + homeDir)
       if (!mid || chess.get(mid as Square)) return null
-      if (blocked?.has(mid)) return null
+      if (pathBlocked?.has(mid)) return null
     }
 
     chess.remove(from as Square)
     chess.remove(to as Square)
-    const promo = Number(to[1]) === promoRank ? 'q' : undefined
-    chess.put({ type: promo ?? 'p', color: piece.color }, to as Square)
+    chess.put({ type: 'p', color: piece.color }, to as Square)
 
     const parts = chess.fen().split(' ')
     parts[1] = color === 'white' ? 'b' : 'w'

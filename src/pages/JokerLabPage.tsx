@@ -1,9 +1,12 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Chessboard } from 'react-chessboard'
+import { DimensionEnv } from '@/components/match/DimensionEnv'
 import { JokerClockFx, type ClockFxEvent } from '@/components/match/JokerClockFx'
 import { JokerFxOverlay } from '@/components/match/JokerFxOverlay'
 import { PageTransition } from '@/components/PageTransition'
+import { piecesForDimension } from '@/lib/dimPieces'
+import { getDimension, isDarkDimension } from '@/lib/dimensions'
 import { jokerArtUrl } from '@/lib/jokerArt'
 import {
   area3x3,
@@ -11,8 +14,10 @@ import {
   listJokerFxCodes,
   type JokerFxKind,
 } from '@/lib/jokerFx'
+import { cn } from '@/lib/utils'
 
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
+const LAB_DIM = 'primo' as const
 
 /** Casillas demo al castear en lab (sin partida real). */
 function demoCastSquares(code: string): string[] {
@@ -57,6 +62,9 @@ export function JokerLabPage() {
   const timers = useRef<{ board?: number; burst?: number; clock?: number }>({})
 
   const spec = getJokerFxSpec(selected)
+  const dimMeta = getDimension(LAB_DIM)
+  const dark = isDarkDimension(LAB_DIM)
+  const dimPieces = useMemo(() => piecesForDimension(dark), [dark])
 
   const clearTimers = () => {
     if (timers.current.board != null) window.clearTimeout(timers.current.board)
@@ -100,7 +108,6 @@ export function JokerLabPage() {
 
   const aim = useMemo(() => {
     if (!aimPreview) return null
-    // Solo jokers con casillas tienen preview aim coherente
     if (
       spec.stage === 'boardCenter' ||
       spec.stage === 'shield' ||
@@ -131,123 +138,139 @@ export function JokerLabPage() {
   }, [boardFx])
 
   return (
-    <PageTransition className="relative z-[1] mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col gap-4 overflow-auto px-4 py-6 sm:px-6">
-      <div>
-        <p className="font-label text-[10px] uppercase tracking-[0.22em] text-[var(--color-primary)]">
-          Laboratorio · comodines
-        </p>
-        <h1 className="font-display mt-2 text-3xl text-[var(--color-ink)]">FX de comodines</h1>
-        <p className="mt-2 max-w-xl text-sm text-[var(--color-ink-muted)]">
-          Reproducí cada animación del pack (cast, aim, ritual, reloj) sin partida. Si algo falla
-          visualmente, anotalo y lo editamos.
-        </p>
-        <p className="mt-2 text-xs text-[var(--color-ink-muted)]">
-          <Link to="/lab" className="text-[var(--color-primary)] hover:underline">
-            ← Dimensiones
+    <PageTransition
+      className={cn(
+        'rc-match-dim relative flex min-h-0 flex-1 flex-col overflow-hidden',
+        `rc-match-dim--${LAB_DIM}`,
+      )}
+    >
+      <DimensionEnv theme={LAB_DIM} persistent intensity={0.55} />
+
+      <div className="relative z-[1] mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col gap-4 overflow-auto px-4 py-6 sm:px-6">
+        <header>
+          <Link
+            to="/lab"
+            className="font-label text-[10px] uppercase tracking-[0.18em] text-[var(--color-primary)] hover:opacity-80"
+          >
+            ← Lab
           </Link>
-        </p>
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(280px,340px)]">
-        <div className="flex flex-col items-center gap-3">
-          <div className="rc-board-stage relative w-[min(100%,420px)]">
-            <JokerClockFx event={clockFx} />
-            <Chessboard
-              options={{
-                id: 'lab-joker-board',
-                position: START_FEN,
-                boardOrientation: orientation,
-                allowDragging: false,
-                squareStyles,
-                boardStyle: {
-                  borderRadius: '4px',
-                  boxShadow: '0 12px 40px rgba(0,0,0,0.2)',
-                },
-              }}
-            />
-            <JokerFxOverlay orientation={orientation} aim={aim} burst={burst} />
-          </div>
-          <div className="flex flex-wrap items-center justify-center gap-2">
-            <button type="button" className="btn-primary !px-4 !py-2 text-sm" onClick={play}>
-              Reproducir cast
-            </button>
-            <button
-              type="button"
-              className="btn-ghost !px-3 !py-2 text-sm"
-              disabled={
-                spec.stage === 'boardCenter' ||
-                spec.stage === 'shield' ||
-                spec.stage.startsWith('clock')
-              }
-              onClick={() => setAimPreview((v) => !v)}
-            >
-              {aimPreview ? 'Ocultar aim' : 'Preview aim'}
-            </button>
-            <button
-              type="button"
-              className="btn-ghost !px-3 !py-2 text-sm"
-              onClick={() => setOrientation((o) => (o === 'white' ? 'black' : 'white'))}
-            >
-              Girar tablero
-            </button>
-          </div>
-          <p className="font-label text-center text-[10px] uppercase tracking-[0.14em] text-[var(--color-ink-muted)]">
-            stage · {spec.stage} · kind · {spec.kind} · {spec.durationMs}ms
+          <p className="font-label mt-2 text-[10px] uppercase tracking-[0.22em] text-[var(--color-primary)]">
+            Laboratorio · comodines
           </p>
-        </div>
+          <h1 className="font-display mt-2 text-3xl text-[var(--color-ink)]">FX de comodines</h1>
+          <p className="mt-2 max-w-xl text-sm text-[var(--color-ink-muted)]">
+            Reproduce cada animación (cast, aim, ritual, reloj) sin partida. Misma atmósfera y
+            tablero que en juego.
+          </p>
+        </header>
 
-        <div className="flex min-h-0 flex-col gap-3">
-          <div className="flex items-center gap-3 border border-[var(--color-outline-soft)]/40 bg-[color-mix(in_srgb,var(--color-surface)_90%,transparent)] p-3">
-            <img
-              src={jokerArtUrl(selected)}
-              alt=""
-              className="h-16 w-12 object-contain bg-[color-mix(in_srgb,var(--color-ink)_8%,transparent)]"
-              draggable={false}
-            />
-            <div className="min-w-0">
-              <p className="font-display text-lg text-[var(--color-ink)]">{spec.label}</p>
-              <p className="truncate font-label text-[10px] uppercase tracking-[0.14em] text-[var(--color-ink-muted)]">
-                {selected} · {spec.theme}
-              </p>
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(280px,340px)]">
+          <div className="flex flex-col items-center gap-3">
+            <div className={cn('rc-board-stage relative w-[min(100%,420px)]', `rc-board-stage--${LAB_DIM}`)}>
+              <JokerClockFx event={clockFx} />
+              <Chessboard
+                options={{
+                  id: 'lab-joker-board',
+                  position: START_FEN,
+                  boardOrientation: orientation,
+                  allowDragging: false,
+                  pieces: dimPieces,
+                  squareStyles,
+                  boardStyle: {
+                    borderRadius: '4px',
+                    boxShadow: dimMeta.board.frame
+                      ? `0 0 0 1px ${dimMeta.board.frame}, 0 18px 50px rgba(0,0,0,0.35)`
+                      : '0 12px 40px rgba(0,0,0,0.2)',
+                  },
+                  lightSquareStyle: { backgroundColor: dimMeta.board.light },
+                  darkSquareStyle: { backgroundColor: dimMeta.board.dark },
+                }}
+              />
+              <JokerFxOverlay orientation={orientation} aim={aim} burst={burst} />
             </div>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <button type="button" className="btn-primary !px-4 !py-2 text-sm" onClick={play}>
+                Reproducir cast
+              </button>
+              <button
+                type="button"
+                className="btn-ghost !px-3 !py-2 text-sm"
+                disabled={
+                  spec.stage === 'boardCenter' ||
+                  spec.stage === 'shield' ||
+                  spec.stage.startsWith('clock')
+                }
+                onClick={() => setAimPreview((v) => !v)}
+              >
+                {aimPreview ? 'Ocultar aim' : 'Preview aim'}
+              </button>
+              <button
+                type="button"
+                className="btn-ghost !px-3 !py-2 text-sm"
+                onClick={() => setOrientation((o) => (o === 'white' ? 'black' : 'white'))}
+              >
+                Girar tablero
+              </button>
+            </div>
+            <p className="font-label text-center text-[10px] uppercase tracking-[0.14em] text-[var(--color-ink-muted)]">
+              stage · {spec.stage} · kind · {spec.kind} · {spec.durationMs}ms
+            </p>
           </div>
-          <ul className="grid max-h-[min(58vh,520px)] gap-1 overflow-auto sm:grid-cols-1">
-            {codes.map((code) => {
-              const s = getJokerFxSpec(code)
-              const active = code === selected
-              return (
-                <li key={code}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelected(code)
-                      setAimPreview(false)
-                    }}
-                    className={`flex w-full items-center gap-2 border px-2 py-2 text-left transition ${
-                      active
-                        ? 'border-[var(--color-primary)]/50 bg-[color-mix(in_srgb,var(--color-primary)_12%,transparent)]'
-                        : 'border-transparent hover:border-[var(--color-outline-soft)]/40'
-                    }`}
-                  >
-                    <img
-                      src={jokerArtUrl(code)}
-                      alt=""
-                      className="h-10 w-7 shrink-0 object-contain bg-[color-mix(in_srgb,var(--color-ink)_8%,transparent)]"
-                      draggable={false}
-                    />
-                    <span className="min-w-0">
-                      <span className="block truncate text-sm text-[var(--color-ink)]">
-                        {s.label}
+
+          <div className="flex min-h-0 flex-col gap-3">
+            <div className="flex items-center gap-3 border border-[var(--color-outline-soft)]/40 bg-[color-mix(in_srgb,var(--color-surface)_88%,transparent)] p-3">
+              <img
+                src={jokerArtUrl(selected)}
+                alt=""
+                className="h-16 w-12 object-contain bg-[color-mix(in_srgb,var(--color-ink)_8%,transparent)]"
+                draggable={false}
+              />
+              <div className="min-w-0">
+                <p className="font-display text-lg text-[var(--color-ink)]">{spec.label}</p>
+                <p className="truncate font-label text-[10px] uppercase tracking-[0.14em] text-[var(--color-ink-muted)]">
+                  {selected} · {spec.theme}
+                </p>
+              </div>
+            </div>
+            <ul className="grid max-h-[min(58vh,520px)] gap-1 overflow-auto sm:grid-cols-1">
+              {codes.map((code) => {
+                const s = getJokerFxSpec(code)
+                const active = code === selected
+                return (
+                  <li key={code}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelected(code)
+                        setAimPreview(false)
+                      }}
+                      className={cn(
+                        'flex w-full items-center gap-2 border px-2 py-2 text-left transition',
+                        active
+                          ? 'border-[var(--color-primary)]/50 bg-[color-mix(in_srgb,var(--color-primary)_12%,transparent)]'
+                          : 'border-transparent hover:border-[var(--color-outline-soft)]/40',
+                      )}
+                    >
+                      <img
+                        src={jokerArtUrl(code)}
+                        alt=""
+                        className="h-10 w-7 shrink-0 object-contain bg-[color-mix(in_srgb,var(--color-ink)_8%,transparent)]"
+                        draggable={false}
+                      />
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm text-[var(--color-ink)]">
+                          {s.label}
+                        </span>
+                        <span className="font-label text-[9px] uppercase tracking-[0.12em] text-[var(--color-ink-muted)]">
+                          {s.stage}
+                        </span>
                       </span>
-                      <span className="font-label text-[9px] uppercase tracking-[0.12em] text-[var(--color-ink-muted)]">
-                        {s.stage}
-                      </span>
-                    </span>
-                  </button>
-                </li>
-              )
-            })}
-          </ul>
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
         </div>
       </div>
     </PageTransition>
