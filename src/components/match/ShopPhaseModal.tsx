@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
+import { LOOP_PHASES } from '@/lib/dimensions'
 import { JokerCard } from '@/components/jokers/JokerCard'
 import { easeOut, riseItem, stagger } from '@/lib/motion'
 import { cn } from '@/lib/utils'
@@ -156,7 +157,7 @@ export function ShopPhaseModal({
               <div className="relative flex flex-wrap items-end justify-between gap-3">
                 <div>
                   <p className="font-label text-[10px] uppercase tracking-[0.22em] text-[var(--color-primary)]">
-                    Fase de mercado · ciclo {cycleIndex}
+                    {LOOP_PHASES.shop.title} · ciclo {cycleIndex}
                   </p>
                   <h2 id="shop-title" className="font-display mt-0.5 text-2xl text-[var(--color-primary)] sm:text-3xl">
                     Mercado de comodines

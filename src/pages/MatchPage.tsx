@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
+import { AnimatePresence, motion } from 'framer-motion'
 import { Chess } from 'chess.js'
 import { Chessboard } from 'react-chessboard'
 import { useAuth } from '@/auth/AuthContext'
@@ -22,7 +23,12 @@ import { ShopIntroOverlay } from '@/components/match/ShopIntroOverlay'
 import { ShopPhaseModal, ShopWaitOverlay } from '@/components/match/ShopPhaseModal'
 import { VictoryOverlay } from '@/components/match/VictoryOverlay'
 import { SpotifyMatchWidget } from '@/components/match/SpotifyMatchWidget'
+import { DimensionReveal } from '@/components/match/DimensionReveal'
+import { DimensionEnv } from '@/components/match/DimensionEnv'
+import { PhaseFlash } from '@/components/match/PhaseFlash'
 import { PageTransition } from '@/components/PageTransition'
+import { getDimension, LOOP_PHASES } from '@/lib/dimensions'
+import { easeOut } from '@/lib/motion'
 import {
   portalReady,
   type MatchBoardSnapshot,
@@ -156,6 +162,10 @@ export function MatchPage() {
   const localDrag = useRef<{ from: string; piece: string } | null>(null)
   const [remoteDrag, setRemoteDrag] = useState<PieceDragPayload | null>(null)
   const [optimisticFen, setOptimisticFen] = useState<string | null>(null)
+  const [revealDimension, setRevealDimension] = useState<string | null>(null)
+  const [phaseFlash, setPhaseFlash] = useState<'action' | 'rift' | null>(null)
+  const seenDimension = useRef<string | null>(null)
+  const seenPhaseKey = useRef<string | null>(null)
   const [aim, setAim] = useState<JokerAim | null>(null)
   /** Pieza seleccionada para click-to-move + indicadores de destinos. */
   const [selectedSquare, setSelectedSquare] = useState<string | null>(null)
@@ -511,6 +521,49 @@ export function MatchPage() {
   const clocks = useLiveClocks(match, state?.players)
   const timeoutClaimed = useRef(false)
   const shopTimeoutClaimed = useRef(false)
+  const dimensionInfo = getDimension(match?.current_dimension)
+
+  // Overlay temático al cambiar de dimensión (Fase de Grieta) ~2.5s
+  useEffect(() => {
+    if (!match?.current_dimension || isFinished || isWaitingRival) return
+    const dim = match.current_dimension
+    if (seenDimension.current === null) {
+      seenDimension.current = dim
+      return
+    }
+    if (seenDimension.current === dim) return
+    seenDimension.current = dim
+    setRevealDimension(dim)
+    setPhaseFlash('rift')
+    const tFlash = window.setTimeout(() => setPhaseFlash(null), 2400)
+    return () => window.clearTimeout(tFlash)
+  }, [match?.current_dimension, isFinished, isWaitingRival])
+
+  // Flash corto al volver a Fase de Acción tras la tienda
+  useEffect(() => {
+    if (!match || isFinished || isWaitingRival) return
+    const key = `${match.phase}:${match.status}:${match.cycle_index}`
+    const inAction =
+      match.status === 'active' && match.phase !== 'shop' && !inShopPhase
+    if (seenPhaseKey.current === null) {
+      seenPhaseKey.current = key
+      return
+    }
+    if (seenPhaseKey.current === key) return
+    const wasShop = seenPhaseKey.current.includes('shop')
+    seenPhaseKey.current = key
+    if (inAction && wasShop) {
+      setPhaseFlash('action')
+      const t = window.setTimeout(() => setPhaseFlash(null), 2200)
+      return () => window.clearTimeout(t)
+    }
+  }, [match?.phase, match?.status, match?.cycle_index, inShopPhase, isFinished, isWaitingRival, match])
+
+  useEffect(() => {
+    if (!revealDimension) return
+    const t = window.setTimeout(() => setRevealDimension(null), 2500)
+    return () => window.clearTimeout(t)
+  }, [revealDimension])
 
   // Reto: host espera a que el rival acepte (join)
   useEffect(() => {
@@ -823,7 +876,7 @@ export function MatchPage() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [aim])
+  }, [aim, selectedSquare])
 
   // Tablero / fase cambian → limpia selección de pieza
   useEffect(() => {
@@ -847,8 +900,8 @@ export function MatchPage() {
 
   function startLocalDrag(from: string, piece: string) {
     if (!id) return
-    setSelectedSquare(from)
     localDrag.current = { from, piece }
+    setSelectedSquare(from)
     publishDragRef.current?.({
       matchId: id,
       from,
@@ -986,7 +1039,7 @@ export function MatchPage() {
 
     // Trayectoria (no caballos): no cruzar quemadas
     if (piece && piece.type !== 'n') {
-      const path = pathBetweenClient(sourceSquare, dest)
+      const path = pathBetween(sourceSquare, dest)
       if (path.some((sq) => blockedSquares.has(sq))) {
         setError('La trayectoria cruza una zona quemada o en ruina')
         return false
@@ -1499,8 +1552,28 @@ export function MatchPage() {
     navigate(`/partida/${m.id}`)
   }
 
+  const dimTheme = dimensionInfo.id
+  const darkMatch = dimTheme !== 'primo'
+
   return (
-    <PageTransition className="flex min-h-0 flex-1 flex-col">
+    <PageTransition
+      className={`rc-match rc-match--${dimTheme}${darkMatch ? ' rc-match--dark' : ''} flex min-h-0 flex-1 flex-col`}
+    >
+      <AnimatePresence>
+        <motion.div
+          key={dimTheme}
+          className="rc-match-bg"
+          aria-hidden
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.85, ease: easeOut }}
+        >
+          <DimensionEnv theme={dimTheme} />
+          <div className="rc-match-bg-veil" />
+        </motion.div>
+      </AnimatePresence>
+
       {bridge}
       <MatchToast
         message={error}
@@ -1558,8 +1631,13 @@ export function MatchPage() {
         onExit={() => navigate('/')}
         onRematch={() => void rematch()}
       />
+      <DimensionReveal
+        dimensionId={revealDimension}
+        onDismiss={() => setRevealDimension(null)}
+      />
+      <PhaseFlash kind={revealDimension ? null : phaseFlash} />
       <div
-        className={`flex min-h-0 flex-1 flex-col ${
+        className={`rc-match-ui flex min-h-0 flex-1 flex-col ${
           isShop || (isShopWaiting && !shopPeek) ? 'pointer-events-none select-none' : ''
         }`}
         aria-hidden={isShop || (isShopWaiting && !shopPeek) || undefined}
@@ -1692,7 +1770,13 @@ export function MatchPage() {
                   position: displayFen,
                   boardOrientation: you?.color === 'black' ? 'black' : 'white',
                   allowDragging:
-                    yourTurn && !busy && !inShopPhase && !isFinished && !optimisticFen && !aim,
+                    yourTurn &&
+                    !busy &&
+                    !inShopPhase &&
+                    !isFinished &&
+                    !optimisticFen &&
+                    !aim &&
+                    !revealDimension,
                   animationDurationInMs: 280,
                   squareStyles: dragSquareStyles,
                   onSquareClick: ({ square }) => {
@@ -1714,8 +1798,8 @@ export function MatchPage() {
                   },
                   boardStyle: {
                     borderRadius: '4px',
-                    boxShadow: '0 12px 40px rgba(115,92,0,0.08)',
-                    cursor: aim ? 'crosshair' : undefined,
+                    boxShadow: '0 16px 48px rgba(0,0,0,0.28)',
+                    cursor: aim ? 'crosshair' : selectedSquare ? 'pointer' : undefined,
                   },
                   lightSquareStyle: { backgroundColor: '#f5f4ef' },
                   darkSquareStyle: { backgroundColor: '#d0c5af' },
