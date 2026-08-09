@@ -169,6 +169,16 @@ export const api = {
       `/api/spotify/search?q=${encodeURIComponent(q)}&limit=${limit}`,
       { token },
     ),
+
+  soundcloudResolve: (url: string) =>
+    request<SoundCloudTrack>(`/api/soundcloud/resolve?url=${encodeURIComponent(url)}`),
+}
+
+export type SoundCloudTrack = {
+  url: string
+  title: string
+  author: string
+  thumbnail: string | null
 }
 
 export type SpotifyTrack = {

@@ -6,6 +6,7 @@ import { profilesRouter } from './routes/profiles.js'
 import { developersRouter } from './routes/developers.js'
 import { matchesRouter } from './routes/matches.js'
 import { spotifyRouter } from './routes/spotify.js'
+import { soundcloudRouter } from './routes/soundcloud.js'
 import { requireAuth } from './middleware/auth.js'
 import { spotifyConfigured } from './spotify.js'
 
@@ -39,6 +40,7 @@ export function createApp() {
   app.use('/api/developers', developersRouter)
   app.use('/api/matches', matchesRouter)
   app.use('/api/spotify', spotifyRouter)
+  app.use('/api/soundcloud', soundcloudRouter)
 
   app.post('/api/presence/heartbeat', requireAuth, async (req, res, next) => {
     try {

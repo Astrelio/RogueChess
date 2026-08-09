@@ -22,7 +22,7 @@ import { MatchPortalBridge, type MatchPortalPeerInfo } from '@/components/match/
 import { ShopIntroOverlay } from '@/components/match/ShopIntroOverlay'
 import { ShopPhaseModal, ShopWaitOverlay } from '@/components/match/ShopPhaseModal'
 import { VictoryOverlay } from '@/components/match/VictoryOverlay'
-import { SpotifyMatchWidget } from '@/components/match/SpotifyMatchWidget'
+import { SoundCloudMatchWidget } from '@/components/match/SoundCloudMatchWidget'
 import { DimensionReveal } from '@/components/match/DimensionReveal'
 import { DimensionEnv } from '@/components/match/DimensionEnv'
 import { PhaseFlash } from '@/components/match/PhaseFlash'
@@ -1694,7 +1694,7 @@ export function MatchPage() {
               )}
             </div>
             {!isFinished && !isWaitingRival ? (
-              <SpotifyMatchWidget matchId={id} dimension={match.current_dimension} />
+              <SoundCloudMatchWidget matchId={id} dimension={match.current_dimension} />
             ) : null}
           </div>
         </div>
