@@ -9,6 +9,7 @@ import { ProfilePage } from '@/pages/ProfilePage'
 import { PublicProfilePage } from '@/pages/PublicProfilePage'
 import { DevsPage } from '@/pages/DevsPage'
 import { MatchPage } from '@/pages/MatchPage'
+import { SpotifyCallbackPage } from '@/pages/SpotifyCallbackPage'
 
 export default function App() {
   return (
@@ -24,6 +25,7 @@ export default function App() {
               <Route path="/u/:username" element={<PublicProfilePage />} />
               <Route path="/devs" element={<DevsPage />} />
               <Route path="/partida/:id" element={<MatchPage />} />
+              <Route path="/spotify-callback" element={<SpotifyCallbackPage />} />
             </Routes>
           </Shell>
         </BrowserRouter>

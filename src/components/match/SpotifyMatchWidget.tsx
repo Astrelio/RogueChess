@@ -1,9 +1,17 @@
 import { useEffect, useEffectEvent, useId, useRef, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Music2, Search, X } from 'lucide-react'
+import { Music2, Pause, Play, Search, Volume2, X } from 'lucide-react'
 import { useAuth } from '@/auth/AuthContext'
 import { api, type SpotifyTrack } from '@/lib/api'
 import { easeOut } from '@/lib/motion'
+import {
+  beginSpotifyLogin,
+  disconnectSpotify,
+  spotifyAuthConfigured,
+  spotifyConnected,
+} from '@/lib/spotifyAuth'
+import { useSpotifyPlayer } from '@/hooks/useSpotifyPlayer'
 
 const STORAGE_PREFIX = 'rc-spotify-track:'
 
@@ -50,6 +58,7 @@ type Props = {
 
 export function SpotifyMatchWidget({ matchId, dimension = 'primo' }: Props) {
   const { getToken } = useAuth()
+  const location = useLocation()
   const panelId = useId()
   const rootRef = useRef<HTMLDivElement>(null)
   const [open, setOpen] = useState(false)
@@ -59,6 +68,29 @@ export function SpotifyMatchWidget({ matchId, dimension = 'primo' }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [results, setResults] = useState<SpotifyTrack[]>([])
   const [selected, setSelected] = useState<SpotifyTrack | null>(() => loadSaved(matchId))
+  const [connected, setConnected] = useState(() => spotifyConnected())
+  const [volume, setVolume] = useState(55)
+  const player = useSpotifyPlayer(connected)
+
+  // Conexión retomada tras saltar de localhost a 127.0.0.1
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('spotify_connect') !== '1') return
+    params.delete('spotify_connect')
+    const rest = params.toString()
+    window.history.replaceState(null, '', `${location.pathname}${rest ? `?${rest}` : ''}`)
+    void beginSpotifyLogin(location.pathname)
+  }, [location.pathname])
+
+  // Cuenta conectada + reproductor listo → suena la pista elegida
+  useEffect(() => {
+    if (!connected || player.status !== 'ready' || !selected) return
+    if (player.nowPlaying?.uri === selected.uri) return
+    player.play(selected.uri).catch(() => {
+      /* autoplay bloqueado: el jugador puede pulsar play */
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connected, player.status, selected?.uri])
 
   const onDocPointer = useEffectEvent((ev: MouseEvent) => {
     if (!open) return
@@ -139,9 +171,28 @@ export function SpotifyMatchWidget({ matchId, dimension = 'primo' }: Props) {
   }
 
   function clear() {
+    if (connected && player.nowPlaying && !player.nowPlaying.paused) {
+      void player.togglePlay()
+    }
     setSelected(null)
     saveTrack(matchId, null)
   }
+
+  function onTogglePlay(track: SpotifyTrack) {
+    setError(null)
+    if (player.nowPlaying?.uri === track.uri) {
+      void player.togglePlay()
+      return
+    }
+    player.play(track.uri).catch((err) => {
+      setError(err instanceof Error ? err.message : 'No se pudo reproducir')
+    })
+  }
+
+  const isCurrent = selected != null && player.nowPlaying?.uri === selected.uri
+  const isPlaying = isCurrent && player.nowPlaying?.paused === false
+  const premiumPlayback =
+    connected && player.status !== 'premium_required' && player.status !== 'error'
 
   const dimHint =
     dimension && dimension !== 'primo'
@@ -204,6 +255,7 @@ export function SpotifyMatchWidget({ matchId, dimension = 'primo' }: Props) {
               </div>
               <p className="mt-1 text-[11px] leading-snug text-[var(--color-ink-muted)]">
                 Solo tú oyes la pista — elige algo para la partida.
+                {connected ? ' Premium conectado: canciones completas.' : ''}
               </p>
             </div>
 
@@ -306,21 +358,116 @@ export function SpotifyMatchWidget({ matchId, dimension = 'primo' }: Props) {
                       Quitar
                     </button>
                   </div>
-                  <iframe
-                    title={`Spotify · ${selected.name}`}
-                    src={`https://open.spotify.com/embed/track/${selected.id}?utm_source=generator&theme=0`}
-                    width="100%"
-                    height="80"
-                    allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-                    loading="lazy"
-                    className="block border-0"
-                  />
+                  {premiumPlayback ? (
+                    <div className="flex items-center gap-2.5 px-2.5 pb-2.5">
+                      {(player.nowPlaying?.imageUrl ?? selected.imageUrl) ? (
+                        <img
+                          src={player.nowPlaying?.imageUrl ?? selected.imageUrl ?? undefined}
+                          alt=""
+                          className={`size-11 shrink-0 rounded-sm object-cover shadow-sm ${
+                            isPlaying ? 'animate-pulse' : ''
+                          }`}
+                        />
+                      ) : (
+                        <span className="flex size-11 shrink-0 items-center justify-center rounded-sm bg-[var(--color-surface-high)] text-[var(--color-primary)]">
+                          <Music2 className="size-4" />
+                        </span>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm text-[var(--color-ink)]">
+                          {player.nowPlaying?.name ?? selected.name}
+                        </p>
+                        <p className="truncate text-[11px] text-[var(--color-ink-muted)]">
+                          {player.nowPlaying?.artists ?? selected.artists}
+                        </p>
+                        <div className="mt-1 flex items-center gap-1.5">
+                          <Volume2 className="size-3 shrink-0 text-[var(--color-ink-muted)]" />
+                          <input
+                            type="range"
+                            min={0}
+                            max={100}
+                            value={volume}
+                            aria-label="Volumen"
+                            className="h-1 w-full accent-[var(--color-primary)]"
+                            onChange={(e) => {
+                              const v = Number(e.target.value)
+                              setVolume(v)
+                              void player.setVolume(v / 100)
+                            }}
+                          />
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => onTogglePlay(selected)}
+                        disabled={player.status !== 'ready'}
+                        className="btn-primary flex size-9 shrink-0 items-center justify-center !rounded-full !p-0 disabled:opacity-50"
+                        aria-label={isPlaying ? 'Pausar' : 'Reproducir'}
+                        title={player.status !== 'ready' ? 'Iniciando reproductor…' : undefined}
+                      >
+                        {isPlaying ? (
+                          <Pause className="size-4" strokeWidth={2} />
+                        ) : (
+                          <Play className="size-4 translate-x-[1px]" strokeWidth={2} />
+                        )}
+                      </button>
+                    </div>
+                  ) : (
+                    <iframe
+                      title={`Spotify · ${selected.name}`}
+                      src={`https://open.spotify.com/embed/track/${selected.id}?utm_source=generator&theme=0`}
+                      width="100%"
+                      height="80"
+                      allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+                      loading="lazy"
+                      className="block border-0"
+                    />
+                  )}
                 </motion.div>
               ) : (
                 <p className="text-center text-[11px] text-[var(--color-ink-muted)]">
                   Ninguna pista en la mesa todavía.
                 </p>
               )}
+
+              {player.status === 'premium_required' ? (
+                <p className="text-[11px] leading-snug text-[var(--color-error)]">
+                  Tu cuenta de Spotify no es Premium — se usa la vista previa de 30s.
+                </p>
+              ) : null}
+              {player.status === 'error' && player.error ? (
+                <p className="text-[11px] leading-snug text-[var(--color-error)]">{player.error}</p>
+              ) : null}
+
+              {spotifyAuthConfigured() ? (
+                <div className="flex items-center justify-between gap-2 border-t border-[var(--color-outline-soft)]/40 pt-2.5">
+                  {connected ? (
+                    <>
+                      <span className="font-label text-[10px] uppercase tracking-[0.14em] text-[var(--color-primary)]">
+                        Spotify Premium conectado
+                      </span>
+                      <button
+                        type="button"
+                        className="font-label text-[10px] uppercase tracking-wider text-[var(--color-ink-muted)] hover:text-[var(--color-ink)] hover:underline"
+                        onClick={() => {
+                          disconnectSpotify()
+                          setConnected(false)
+                        }}
+                      >
+                        Desconectar
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn-ghost w-full !py-1.5 text-xs"
+                      onClick={() => void beginSpotifyLogin(location.pathname)}
+                    >
+                      Conectar Spotify Premium — canciones completas
+                    </button>
+                  )}
+                </div>
+              ) : null}
             </div>
           </motion.div>
         ) : null}

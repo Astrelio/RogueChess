@@ -27,6 +27,8 @@ export default defineConfig(({ mode }) => {
       },
     },
     server: {
+      // IPv4 + IPv6: Spotify OAuth exige 127.0.0.1 (no acepta localhost)
+      host: true,
       port: 5173,
       proxy: {
         '/api': {
