@@ -44,15 +44,21 @@ export function previewAparicionFen(
   return editedFen(chess)
 }
 
-/** Preview: quitar pieza en casilla (Avada). */
-export function previewRemovePieceFen(fen: string, square: string): string | null {
+/** Preview: quitar pieza en casilla (Avada). Nunca el rey; solo peón o was_pawn. */
+export function previewRemovePieceFen(
+  fen: string,
+  square: string,
+  opts?: { wasPawn?: boolean },
+): string | null {
   let chess: Chess
   try {
     chess = new Chess(fen)
   } catch {
     return null
   }
-  if (!chess.get(square as Square)) return null
+  const target = chess.get(square as Square)
+  if (!target || target.type === 'k') return null
+  if (target.type !== 'p' && !opts?.wasPawn) return null
   chess.remove(square as Square)
   return editedFen(chess)
 }

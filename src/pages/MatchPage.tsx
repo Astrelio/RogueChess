@@ -1900,7 +1900,11 @@ export function MatchPage() {
           state.you.color,
         )
       } else if (code === 'avada_kedavra' && typeof payload.square === 'string') {
-        previewFen = previewRemovePieceFen(state.match.fen, payload.square)
+        const sq = payload.square
+        const wasPawn = (state.flags || []).some(
+          (f) => f.square === sq && f.color !== state.you!.color && f.was_pawn,
+        )
+        previewFen = previewRemovePieceFen(state.match.fen, sq, { wasPawn })
       } else if (code === 'morsmordre' && typeof payload.square === 'string') {
         previewFen = previewMorsmordreFen(
           state.match.fen,
@@ -2080,6 +2084,17 @@ export function MatchPage() {
     if (!aim || busy) return
     // Evitar duplicar la misma casilla en multi-target (apareción / imperius)
     if (aim.squares.includes(square) && aim.mode.slots.length > 1) return
+
+    // Solo casillas legales del comodín (p. ej. Avada nunca el rey)
+    const allowed = new Set([
+      ...jokerHints.hostile,
+      ...jokerHints.ally,
+      ...jokerHints.empty,
+    ])
+    if (allowed.size > 0 && !allowed.has(square)) {
+      setError('Esa casilla no es un objetivo válido')
+      return
+    }
 
     const nextSquares = [...aim.squares, square]
     const payload = buildJokerPayload(aim.mode, nextSquares)
@@ -2530,10 +2545,7 @@ export function MatchPage() {
               </div>
 
               {/* Reloj propio */}
-              <div
-                data-tutorial="clock"
-                className="flex items-center justify-between gap-2 pt-1.5 font-label text-xs uppercase tracking-wider text-[var(--color-ink-muted)]"
-              >
+              <div className="flex items-center justify-between gap-2 pt-1.5 font-label text-xs uppercase tracking-wider text-[var(--color-ink-muted)]">
                 <span className={clocks.runningFor === myColor ? 'text-[var(--color-primary)]' : ''}>
                   {myPlayer?.display_name ?? (isSpectator ? (myColor === 'white' ? 'Blancas' : 'Negras') : 'Tú')}
                   {yourTurn ? ' · tu turno' : ''}
@@ -2542,6 +2554,7 @@ export function MatchPage() {
                     : ''}
                 </span>
                 <span
+                  data-tutorial="clock"
                   className={`tabular-nums text-sm ${
                     clocks.runningFor === myColor
                       ? 'text-[var(--color-primary)]'
@@ -2654,6 +2667,7 @@ export function MatchPage() {
               jokerCount={yourInv.length}
               dimensionId={dimMeta.id}
               inShop={inShopPhase}
+              aimingJokerCode={aim?.mode.code ?? null}
               onDone={() => setTutorialDone(true)}
             />
           ) : (

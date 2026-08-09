@@ -9,6 +9,7 @@ type Stage =
   | 'welcome'
   | 'move'
   | 'jokers'
+  | 'avada'
   | 'shop'
   | 'freeplay'
   | 'dimension'
@@ -20,6 +21,7 @@ const STAGE_TARGET: Record<Stage, string | null> = {
   welcome: 'clock',
   move: 'board',
   jokers: 'jokers',
+  avada: 'board',
   shop: 'clock',
   freeplay: null,
   dimension: 'dimension',
@@ -27,28 +29,33 @@ const STAGE_TARGET: Record<Stage, string | null> = {
   done: null,
 }
 
+/** Pasos que avanzan con un toque (salvo excepciones abajo). */
+const TAP_ADVANCE: ReadonlySet<Stage> = new Set([
+  'welcome',
+  'jokers',
+  'avada',
+  'shop',
+  'dimension',
+  'close',
+])
+
 type Props = {
-  /** Visible solo con el tablero en juego. */
   open: boolean
   dark?: boolean
-  /** El jugador ya realizó al menos una jugada. */
   moved?: boolean
-  /** Comodines en la bandeja del jugador. */
   jokerCount?: number
-  /** Dimensión actual del tablero (para anunciar el primer cambio). */
   dimensionId?: string
-  /** Fase de tienda activa (la modal tapa al coach; se pausa el globo). */
   inShop?: boolean
-  /** Tutorial terminado: el padre puede volver a la mascota normal. */
+  /** Código del comodín en modo apuntado (p. ej. avada_kedavra). */
+  aimingJokerCode?: string | null
   onDone?: () => void
 }
 
 type Rect = { top: number; left: number; width: number; height: number }
 
 /**
- * Guía reactiva para la partida tutorial (?tutorial=1): Bishop explica el
- * tablero y un foco resalta el elemento del que habla cada paso. El foco no
- * bloquea clicks (pointer-events: none), así que se puede seguir jugando.
+ * Guía reactiva del tutorial: tips por toque, y si eliges Avada se inserta
+ * un paso de cómo usarlo antes del tip de la tienda/reloj.
  */
 export function TutorialCoach({
   open,
@@ -57,18 +64,20 @@ export function TutorialCoach({
   jokerCount = 0,
   dimensionId,
   inShop,
+  aimingJokerCode,
   onDone,
 }: Props) {
   const [stage, setStage] = useState<Stage>('welcome')
   const [rect, setRect] = useState<Rect | null>(null)
   const dimAnnouncedRef = useRef<string | null>(null)
   const shopVisitedRef = useRef(false)
+  const stageReadyAtRef = useRef(0)
+  const sawAvadaAimRef = useRef(false)
 
   const visible = open && !inShop && stage !== 'done'
   const target = STAGE_TARGET[stage]
+  const tapAdvance = TAP_ADVANCE.has(stage)
 
-  // Medir el elemento a enfocar; re-medir en resize y periódicamente
-  // (el tablero cambia de tamaño con el viewport y los paneles animan).
   useEffect(() => {
     if (!visible || !target) {
       setRect(null)
@@ -104,7 +113,10 @@ export function TutorialCoach({
     }
   }, [visible, target])
 
-  // Paso «mover»: avanza solo en cuanto el jugador hace su primera jugada.
+  useEffect(() => {
+    stageReadyAtRef.current = performance.now() + 380
+  }, [stage])
+
   useEffect(() => {
     if (stage === 'move' && moved) {
       const t = window.setTimeout(() => setStage('jokers'), 600)
@@ -112,12 +124,31 @@ export function TutorialCoach({
     }
   }, [stage, moved])
 
-  // Registrar que ya pasó por la tienda (para reforzarlo al volver al tablero).
   useEffect(() => {
     if (inShop) shopVisitedRef.current = true
   }, [inShop])
 
-  // Primer cambio de dimensión: interrumpe el freeplay y la presenta.
+  // Click en Avada durante el tip de comodines → guía de uso (no tip del reloj).
+  useEffect(() => {
+    if (stage === 'jokers' && aimingJokerCode === 'avada_kedavra') {
+      sawAvadaAimRef.current = true
+      setStage('avada')
+    }
+  }, [stage, aimingJokerCode])
+
+  // Tras usar (o cancelar) Avada en su paso → tip de tienda.
+  useEffect(() => {
+    if (stage !== 'avada') return
+    if (aimingJokerCode === 'avada_kedavra') {
+      sawAvadaAimRef.current = true
+      return
+    }
+    if (sawAvadaAimRef.current && !aimingJokerCode) {
+      const t = window.setTimeout(() => setStage('shop'), 450)
+      return () => window.clearTimeout(t)
+    }
+  }, [stage, aimingJokerCode])
+
   useEffect(() => {
     if (!dimensionId || dimensionId === 'primo') return
     if (dimAnnouncedRef.current === dimensionId) return
@@ -131,58 +162,99 @@ export function TutorialCoach({
     if (stage === 'done') onDone?.()
   }, [stage, onDone])
 
+  const nextFor = (s: Stage): Stage | null => {
+    switch (s) {
+      case 'welcome':
+        return 'move'
+      case 'jokers':
+        return 'shop'
+      case 'avada':
+        return 'shop'
+      case 'shop':
+        return 'freeplay'
+      case 'dimension':
+        return 'close'
+      case 'close':
+        return 'done'
+      default:
+        return null
+    }
+  }
+
+  useEffect(() => {
+    if (!visible || !tapAdvance) return
+    function onPointerDown(e: PointerEvent) {
+      if (performance.now() < stageReadyAtRef.current) return
+      const el = e.target instanceof Element ? e.target : null
+
+      // En comodines: click en la bandeja = interactuar, no saltar al tip del reloj.
+      if (stage === 'jokers' && el?.closest('[data-tutorial="jokers"]')) return
+
+      // En Avada: clicks en el tablero son para apuntar peones.
+      if (stage === 'avada' && el?.closest('[data-tutorial="board"]')) return
+      if (stage === 'avada' && aimingJokerCode === 'avada_kedavra') return
+
+      const next = nextFor(stage)
+      if (next) setStage(next)
+    }
+    window.addEventListener('pointerdown', onPointerDown)
+    return () => window.removeEventListener('pointerdown', onPointerDown)
+  }, [visible, tapAdvance, stage, aimingJokerCode])
+
   if (stage === 'done') return null
 
   const dim = getDimension(dimensionId)
 
-  const content: Record<Exclude<Stage, 'done'>, { label: string; text: string; cta?: string; next: Stage }> = {
+  const content: Record<Exclude<Stage, 'done'>, { label: string; text: string; hint?: string }> = {
     welcome: {
       label: 'Bienvenida',
       text: '¡Bienvenido a tu partida tutorial! Juegas con blancas contra un bot, sin presión. Este es tu reloj: aquí el tiempo también es tu moneda.',
-      next: 'move',
+      hint: 'Toca para continuar',
     },
     move: {
       label: 'Mover piezas',
       text: 'Te toca: arrastra una pieza o haz click en origen y destino. Los puntos sobre el tablero marcan los movimientos legales. ¡Prueba con un peón!',
-      cta: moved ? 'Entendido' : 'Ya sé mover',
-      next: 'jokers',
     },
     jokers: {
       label: 'Comodines',
       text:
         jokerCount > 0
-          ? `¡Regalo de bienvenida! Tienes ${jokerCount === 1 ? 'un comodín' : `${jokerCount} comodines`} en la bandeja inferior. Pasa el cursor por encima de cada carta para leer qué hace. Luego haz click para activarla.`
-          : 'Tus comodines viven en la bandeja inferior. Pasa el cursor por encima de cada carta para leer qué hace; haz click para activarla (algunas piden elegir casillas).',
-      next: 'shop',
+          ? `¡Regalo de bienvenida! Tienes ${jokerCount === 1 ? 'un comodín' : `${jokerCount} comodines`} en la bandeja inferior. Pasa el cursor por encima para leer qué hace cada carta. Prueba a hacer click en Avada Kedavra.`
+          : 'Tus comodines viven en la bandeja inferior. Pasa el cursor por encima de cada carta para leer qué hace; haz click para activarla.',
+      hint: 'Toca fuera de las cartas para seguir · o elige Avada',
+    },
+    avada: {
+      label: 'Avada Kedavra',
+      text: 'Con Avada apuntas una casilla: elige un peón enemigo (las casillas válidas brillan). El rey es inmune — no sirve contra él. Cuando elijas la víctima, el hechizo se lanza solo.',
+      hint: aimingJokerCode === 'avada_kedavra' ? 'Elige un peón en el tablero' : 'Toca para continuar',
     },
     shop: {
       label: 'Tienda',
       text: 'Cuando termine esta fase se abre la tienda: podrás gastar segundos de este reloj para comprar más comodines. Compra con cabeza, el reloj no vuelve.',
-      next: 'freeplay',
+      hint: 'Toca para continuar',
     },
     freeplay: {
       label: 'Tu turno',
       text: shopVisitedRef.current
         ? 'Sigue jugando y prueba tus comodines. Cuando cambie la dimensión te aviso por aquí.'
         : 'Sigue jugando con calma. Te aviso cuando pase algo nuevo: la tienda o un cambio de dimensión.',
-      cta: '',
-      next: 'freeplay',
     },
     dimension: {
       label: dim.title,
       text: `¡La grieta se abrió! Ahora juegas en ${dim.title}: ${dim.blurb} El panel de la izquierda siempre describe la dimensión activa.`,
-      next: 'close',
+      hint: 'Toca para continuar',
     },
     close: {
       label: 'Listo',
       text: '¡Eso es todo! Ya conoces tablero, comodines, tienda y dimensiones. Cuando quieras salir, usa el logo RogueChess o el botón de arriba.',
-      cta: '¡A jugar!',
-      next: 'done',
+      hint: 'Toca para cerrar la guía',
     },
   }
 
   const step = content[stage]
-  const showButton = step.cta !== ''
+
+  // Padding del foco: el reloj es un chip pequeño → menos aire.
+  const pad = target === 'clock' ? 6 : 10
 
   return createPortal(
     <AnimatePresence>
@@ -194,42 +266,34 @@ export function TutorialCoach({
           exit={{ opacity: 0 }}
           transition={{ duration: 0.35, ease: easeOut }}
         >
-          {/* Foco sobre el elemento del paso: nunca bloquea clicks */}
           <AnimatePresence>
             {rect ? (
               <motion.div
                 key={`spot-${target}`}
-                className="rc-tutorial-spotlight pointer-events-none fixed z-[80] rounded-xl"
+                className="rc-tutorial-spotlight pointer-events-none fixed z-[80] rounded-lg"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.3, ease: easeOut }}
                 style={{
-                  top: rect.top - 10,
-                  left: rect.left - 10,
-                  width: rect.width + 20,
-                  height: rect.height + 20,
+                  top: rect.top - pad,
+                  left: rect.left - pad,
+                  width: rect.width + pad * 2,
+                  height: rect.height + pad * 2,
                 }}
               />
             ) : null}
           </AnimatePresence>
 
-          {/* Mascota + globo, fijos abajo a la derecha, por encima del foco */}
           <div className="rc-match-mascot pointer-events-none fixed bottom-1 right-2 z-[85] hidden max-w-[340px] flex-col items-end gap-2 sm:flex lg:max-w-[360px]">
-            <div className="pointer-events-auto mb-1 max-w-[270px]">
+            <div className="pointer-events-none mb-1 max-w-[270px]">
               <AnimatePresence mode="wait">
                 <MascotSpeech key={stage} label={`Tutorial · ${step.label}`} dark={dark}>
                   <p>{step.text}</p>
-                  {showButton ? (
-                    <div className="mt-2.5 flex items-center justify-end">
-                      <button
-                        type="button"
-                        className="btn-primary !px-3 !py-1 text-[10px]"
-                        onClick={() => setStage(step.next)}
-                      >
-                        {step.cta ?? 'Entendido'}
-                      </button>
-                    </div>
+                  {step.hint ? (
+                    <p className="font-label mt-2.5 text-[9px] uppercase tracking-[0.16em] opacity-55">
+                      {step.hint}
+                    </p>
                   ) : null}
                 </MascotSpeech>
               </AnimatePresence>
