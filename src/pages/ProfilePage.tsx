@@ -101,7 +101,7 @@ export function ProfilePage() {
           <form onSubmit={saveProfile} className="flex flex-col gap-3">
             <h2 className="font-label text-xs uppercase tracking-[0.14em] text-[var(--color-ink)]">Editar</h2>
             <Input label="Nombre" placeholder={profile.display_name} value={displayName} onChange={setDisplayName} />
-            <Input label="Username" placeholder={profile.username} value={username} onChange={setUsername} />
+            <Input label="Usuario" placeholder={profile.username} value={username} onChange={setUsername} />
             <Input label="Bio" placeholder={profile.bio ?? ''} value={bio} onChange={setBio} />
             <motion.button
               type="submit"

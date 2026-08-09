@@ -24,12 +24,27 @@ developersRouter.post('/heart', requireAuth, async (req, res, next) => {
     const rows = await sql`
       SELECT * FROM fn_give_developer_heart(${req.user!.uid}, ${body.slug})
     `
-    const result = rows[0] as { ok: boolean; message: string; developer_id: string | null; heart_count: number | null }
+    const result = rows[0] as {
+      ok: boolean
+      message: string
+      liked_developer_id?: string | null
+      developer_id?: string | null
+      hearts?: number | null
+      heart_count?: number | null
+    }
     if (!result.ok) {
-      res.status(409).json(result)
+      res.status(409).json({
+        ok: false,
+        message: result.message,
+        heart_count: result.hearts ?? result.heart_count ?? null,
+      })
       return
     }
-    res.json(result)
+    res.json({
+      ok: true,
+      message: result.message,
+      heart_count: result.hearts ?? result.heart_count ?? null,
+    })
   } catch (err) {
     next(err)
   }

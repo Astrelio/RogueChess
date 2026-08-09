@@ -7,9 +7,14 @@ import {
   applyPlayerMove,
   botInputFor,
   buildContext,
+  JOKER_BUY_PRIORITY,
   listLegalMoves,
+  pickBotMove,
+  planBotJoker,
+  type BotInvItem,
   type Color,
   type MoveInput,
+  type PieceFlag,
 } from '../engine/index.js'
 import { getMaxPly, getPieceFlags, persistEngineOps } from '../engine/persist.js'
 
@@ -66,7 +71,13 @@ async function getState(matchId: string, firebaseUid?: string): Promise<Record<s
   }
 
   const players = (state.players as Array<Record<string, unknown>>) || []
-  const profileIds = players.map((p) => p.profile_id as string)
+  const spectators = (state.spectators as Array<Record<string, unknown>>) || []
+  const profileIds = [
+    ...new Set([
+      ...players.map((p) => p.profile_id as string),
+      ...spectators.map((s) => s.profile_id as string),
+    ].filter(Boolean)),
+  ]
   let profilesById: Record<string, Record<string, unknown>> = {}
   if (profileIds.length) {
     const rows = await sql`
@@ -81,16 +92,34 @@ async function getState(matchId: string, firebaseUid?: string): Promise<Record<s
     username: profilesById[p.profile_id as string]?.username,
     display_name: profilesById[p.profile_id as string]?.display_name,
   }))
+  const enrichedSpectators = spectators.map((s) => ({
+    ...s,
+    username: profilesById[s.profile_id as string]?.username,
+    display_name: profilesById[s.profile_id as string]?.display_name,
+  }))
 
   const flags = await getPieceFlags(matchId)
+
+  // Reacciones de espectador recientes: canal de entrega de respaldo vía el
+  // polling del cliente (el WS de Portal a veces no entrega ephemerals).
+  const recentEmojis = await sql`
+    SELECT se.id, se.emoji, se.created_at, p.username, p.firebase_uid AS from_uid
+    FROM spectator_emojis se
+    JOIN profiles p ON p.id = se.from_profile_id
+    WHERE se.match_id = ${matchId}::uuid
+      AND se.created_at > now() - interval '20 seconds'
+    ORDER BY se.created_at ASC
+  `
 
   return {
     ...state,
     players: enrichedPlayers,
+    spectators: enrichedSpectators,
     shop: enrichedShop,
     inventory: enrichedInv,
     flags,
     you,
+    recent_emojis: recentEmojis,
   }
 }
 
@@ -116,25 +145,129 @@ matchesRouter.post('/quick', requireAuth, async (req, res, next) => {
   }
 })
 
-/** Crea partida en waiting para reto Portal (el rival hace join). */
+const createRoomSchema = z.object({
+  timeControlS: z.number().int().min(60).max(1800).optional().default(300),
+  allowSpectators: z.boolean().optional().default(true),
+  /** 'custom' genera invite_code; 'quick' queda sin código (legacy). */
+  mode: z.enum(['custom', 'quick']).optional().default('custom'),
+  /** Si se indica, marca match_invites.to_profile_id para la bandeja del rival. */
+  inviteUsername: z.string().trim().min(2).max(32).optional(),
+})
+
+async function bindInviteToUsername(matchId: string, inviteUsername: string | undefined) {
+  const username = inviteUsername?.replace(/^@/, '').trim()
+  if (!username) return
+  await sql`
+    UPDATE match_invites mi
+    SET to_profile_id = p.id
+    FROM profiles p
+    WHERE mi.match_id = ${matchId}::uuid
+      AND lower(p.username) = lower(${username})
+      AND mi.to_profile_id IS NULL
+  `
+}
+
+/** Crea partida en waiting (reto Portal / sala personalizada). Mode custom → invite_code. */
 matchesRouter.post('/challenge', requireAuth, async (req, res, next) => {
   try {
-    const timeControlS = z.number().int().min(60).max(1800).optional().parse(req.body?.timeControlS) ?? 300
+    const body = createRoomSchema.parse(req.body ?? {})
     const rows = await sql`
       SELECT * FROM fn_create_match(
         ${req.user!.uid},
-        'quick'::match_mode,
-        ${timeControlS},
+        ${body.mode}::match_mode,
+        ${body.timeControlS},
         'white'::player_color,
         NULL,
-        TRUE,
+        ${body.allowSpectators},
         TRUE
       )
     `
-    const match = rows[0]
-    const state = await getState(match.id as string, req.user!.uid)
+    const match = rows[0] as { id: string }
+    await bindInviteToUsername(match.id, body.inviteUsername)
+    const state = await getState(match.id, req.user!.uid)
     res.json({ match, state })
   } catch (err) {
+    next(err)
+  }
+})
+
+/** Alias explícito de sala personalizada (siempre mode=custom). */
+matchesRouter.post('/custom', requireAuth, async (req, res, next) => {
+  try {
+    const body = createRoomSchema.parse(req.body ?? {})
+    const rows = await sql`
+      SELECT * FROM fn_create_match(
+        ${req.user!.uid},
+        'custom'::match_mode,
+        ${body.timeControlS},
+        'white'::player_color,
+        NULL,
+        ${body.allowSpectators},
+        TRUE
+      )
+    `
+    const match = rows[0] as { id: string }
+    await bindInviteToUsername(match.id, body.inviteUsername)
+    const state = await getState(match.id, req.user!.uid)
+    res.json({ match, state })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/** Invitaciones pendientes dirigidas a mí (bandeja; respaldo si Portal no empuja). */
+matchesRouter.get('/invites/pending', requireAuth, async (req, res, next) => {
+  try {
+    const rows = await sql`
+      SELECT
+        mi.id AS invite_id,
+        mi.match_id,
+        mi.code AS invite_code,
+        mi.created_at,
+        mi.expires_at,
+        m.status AS match_status,
+        m.time_control_s,
+        m.allow_spectators,
+        pf.username AS from_username,
+        pf.display_name AS from_display_name,
+        pf.firebase_uid AS from_uid
+      FROM match_invites mi
+      JOIN matches m ON m.id = mi.match_id
+      JOIN profiles pf ON pf.id = mi.from_profile_id
+      JOIN profiles me ON me.firebase_uid = ${req.user!.uid}
+      WHERE mi.to_profile_id = me.id
+        AND mi.accepted = FALSE
+        AND mi.expires_at > now()
+        AND m.status = 'waiting'
+      ORDER BY mi.created_at DESC
+      LIMIT 20
+    `
+    res.json({ invites: rows })
+  } catch (err) {
+    next(err)
+  }
+})
+
+const joinByCodeSchema = z.object({
+  code: z.string().trim().min(3).max(16),
+})
+
+/** Unirse a sala personalizada por invite_code (ruta estática antes de /:id). */
+matchesRouter.post('/join-by-code', requireAuth, async (req, res, next) => {
+  try {
+    const { code } = joinByCodeSchema.parse(req.body ?? {})
+    const rows = await sql`
+      SELECT * FROM fn_join_match(${req.user!.uid}, NULL, ${code.toUpperCase()}, NULL)
+    `
+    const match = rows[0] as { id: string }
+    const state = await getState(match.id, req.user!.uid)
+    res.json({ match, state })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : ''
+    if (/not found|invalid|expired|full|already/i.test(message)) {
+      res.status(409).json({ error: message || 'No se pudo unir con ese código' })
+      return
+    }
     next(err)
   }
 })
@@ -352,7 +485,16 @@ matchesRouter.post('/:id/move', requireAuth, async (req, res, next) => {
 
     // Bot reply if match still active and it's bot's turn
     let after = await getState(matchId, req.user!.uid)
-    after = await maybeBotMove(matchId, after, req.user!.uid)
+    try {
+      const afterStatus = (after?.match as { status?: string } | undefined)?.status
+      if (afterStatus === 'shop') {
+        after = await maybeBotBuyJokers(matchId, after!, req.user!.uid)
+      }
+      after = await maybeBotMove(matchId, after, req.user!.uid)
+    } catch (botErr) {
+      console.warn('maybeBotMove failed', botErr)
+      after = (await getState(matchId, req.user!.uid)) ?? after
+    }
 
     // If shop phase, keep as is — client shows shop
     res.json({ state: after, events: result.events })
@@ -361,13 +503,48 @@ matchesRouter.post('/:id/move', requireAuth, async (req, res, next) => {
   }
 })
 
+const codeToKindEarly: Record<string, string> = {
+  paso_fantasma: 'ghost_step',
+  imperius: 'imperius',
+  capa_invisibilidad: 'invisibility',
+  morsmordre: 'morsmordre',
+  expecto_patronum: 'expecto_patronum',
+  bombarda: 'bombarda_burn',
+  aparicion: 'aparicion',
+  pocion_multijugos: 'multijugos',
+  defodio: 'defodio_trap',
+  avada_kedavra: 'avada_kedavra',
+  axio_tempus: 'axio_tempus',
+  arresto_momentum: 'arresto_momentum',
+  petrificus_totalus: 'petrificus_totalus',
+  giratiempo: 'giratiempo',
+}
+
+const INSTANT_EFFECT_KINDS_BOT = [
+  'aparicion',
+  'avada_kedavra',
+  'morsmordre',
+  'bombarda_burn',
+  'defodio_trap',
+  'imperius',
+  'multijugos',
+  'axio_tempus',
+  'arresto_momentum',
+  'petrificus_totalus',
+  'giratiempo',
+]
+
 async function maybeBotMove(
   matchId: string,
   state: Record<string, unknown> | null,
   humanUid: string,
+  depth = 0,
 ): Promise<Record<string, unknown> | null> {
-  if (!state) return state
+  if (!state || depth > 2) return state
   const match = state.match as Record<string, unknown>
+  if (match.status === 'shop' || match.phase === 'shop') {
+    return maybeBotBuyJokers(matchId, state, humanUid)
+  }
   if (match.status !== 'active') return state
 
   const players = (state.players as Array<Record<string, unknown>>) || []
@@ -375,34 +552,98 @@ async function maybeBotMove(
   if (!bot) return state
   if (match.turn_color !== bot.color) return state
 
-  // El bot pasa por el mismo motor que el humano (dimensiones incluidas).
-  // En Espejo usa skipMirror: elige destinos legales reales (si no, se trababa).
-  const ctx = await engineContextFor(matchId, state, bot.color as Color)
-  const legal = listLegalMoves(ctx)
-  if (!legal.length) return state
+  const botProfile = await sql`SELECT firebase_uid FROM profiles WHERE id = ${bot.profile_id}::uuid`
+  const botUid = botProfile[0]?.firebase_uid as string | undefined
+  if (!botUid) return state
 
-  const captures = legal.filter((m) => m.captured)
-  const pool = [...(captures.length ? captures : legal)]
-  // Mezcla y prueba hasta encontrar una jugada que el motor acepte
-  for (let i = pool.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1))
-    ;[pool[i], pool[j]] = [pool[j]!, pool[i]!]
+  let ctx = await engineContextFor(matchId, state, bot.color as Color)
+  const flags = await getPieceFlags(matchId)
+
+  const invRows = await sql`
+    SELECT mi.id, j.code, mi.match_player_id
+    FROM match_inventory mi
+    JOIN jokers j ON j.id = mi.joker_id
+    WHERE mi.match_player_id = ${bot.id}::uuid AND mi.status = 'owned'
+  `
+  const inventory = invRows as BotInvItem[]
+
+  const human = players.find((p) => !p.is_bot)
+  const clocks = {
+    botMs: Number(bot.color === 'white' ? match.white_time_ms : match.black_time_ms) || 0,
+    humanMs:
+      Number(
+        human
+          ? human.color === 'white'
+            ? match.white_time_ms
+            : match.black_time_ms
+          : 0,
+      ) || 0,
   }
 
-  let result: ReturnType<typeof applyPlayerMove> | null = null
-  for (const pick of pool) {
-    const attempt = applyPlayerMove(ctx, botInputFor(ctx, pick))
-    if (attempt.ok) {
-      result = attempt
-      break
+  const plan = planBotJoker(ctx, inventory, flags as PieceFlag[], clocks)
+  if (plan) {
+    const jokerResult = applyJoker(ctx, plan.code, plan.payload)
+    if (jokerResult.ok) {
+      try {
+        await sql`
+          SELECT * FROM fn_consume_joker(
+            ${botUid},
+            ${matchId}::uuid,
+            ${plan.inventoryId}::uuid,
+            ${JSON.stringify({ ...plan.payload, events: jokerResult.events, bot: true })}::jsonb
+          )
+        `
+        await persistEngineOps(matchId, jokerResult, {
+          updateFen: true,
+          cycleIndex: ctx.cycleIndex,
+        })
+        const kind = codeToKindEarly[plan.code]
+        if (kind && INSTANT_EFFECT_KINDS_BOT.includes(kind)) {
+          await sql`
+            UPDATE match_effects SET is_active = FALSE
+            WHERE match_id = ${matchId}::uuid AND kind = ${kind}::effect_kind AND is_active
+          `
+        }
+        state = (await getState(matchId, humanUid)) ?? state
+        ctx = await engineContextFor(matchId, state, bot.color as Color)
+      } catch (err) {
+        console.warn('bot joker failed', plan.code, err)
+      }
     }
   }
-  if (!result || !result.ok) return state
 
-  // Bot firebase uid is system:roguebot — fn_record expects firebase_uid of the mover
-  const botProfile = await sql`SELECT firebase_uid FROM profiles WHERE id = ${bot.profile_id}::uuid`
-  const botUid = botProfile[0]?.firebase_uid as string
+  const pick = pickBotMove(ctx, { depth: 3, timeMs: 850 })
+  if (!pick) return state
 
+  let result = applyPlayerMove(ctx, botInputFor(ctx, pick))
+  if (!result.ok) {
+    for (const m of listLegalMoves(ctx)) {
+      const attempt = applyPlayerMove(ctx, botInputFor(ctx, m))
+      if (attempt.ok) {
+        result = attempt
+        break
+      }
+    }
+  }
+  if (!result.ok) return state
+
+  await recordBotMove(matchId, botUid, result, ctx.cycleIndex)
+  let after = await getState(matchId, humanUid)
+
+  const afterMatch = after?.match as Record<string, unknown> | undefined
+  if (afterMatch?.status === 'shop' || afterMatch?.phase === 'shop') {
+    after = await maybeBotBuyJokers(matchId, after!, humanUid)
+  }
+
+  return maybeBotMove(matchId, after, humanUid, depth + 1)
+}
+
+async function recordBotMove(
+  matchId: string,
+  botUid: string,
+  result: Extract<ReturnType<typeof applyPlayerMove>, { ok: true }>,
+  cycleIndex: number,
+) {
   await sql`
     SELECT * FROM fn_record_chess_move(
       ${botUid},
@@ -415,13 +656,69 @@ async function maybeBotMove(
       ${result.isCapture},
       ${result.isCheck},
       ${result.isMate},
-      ${800 + Math.floor(Math.random() * 1200)},
+      ${600 + Math.floor(Math.random() * 900)},
       ${JSON.stringify({ bot: true, events: result.events })}::jsonb
     )
   `
-  await persistEngineOps(matchId, result, { updateFen: false, cycleIndex: ctx.cycleIndex })
+  await persistEngineOps(matchId, result, { updateFen: false, cycleIndex })
+}
 
-  return getState(matchId, humanUid)
+/** Compra agresiva en tienda: llena slots con los mejores comodines asequibles. */
+async function maybeBotBuyJokers(
+  matchId: string,
+  state: Record<string, unknown>,
+  humanUid: string,
+): Promise<Record<string, unknown>> {
+  const players = (state.players as Array<Record<string, unknown>>) || []
+  const bot = players.find((p) => p.is_bot)
+  if (!bot) return state
+  const match = state.match as Record<string, unknown>
+  if (match.status !== 'shop' && match.phase !== 'shop') return state
+
+  const botProfile = await sql`SELECT firebase_uid FROM profiles WHERE id = ${bot.profile_id}::uuid`
+  const botUid = botProfile[0]?.firebase_uid as string | undefined
+  if (!botUid) return state
+
+  const owned = await sql`
+    SELECT count(*)::int AS n FROM match_inventory
+    WHERE match_player_id = ${bot.id}::uuid AND status = 'owned'
+  `
+  const ownedN = Number(owned[0]?.n ?? 0)
+  const slots = Number(bot.inventory_slots ?? 3)
+  let free = Math.max(0, slots - ownedN)
+  if (free <= 0) return state
+
+  const cycle = Number(match.cycle_index ?? 0)
+  const offers = await sql`
+    SELECT so.id, so.cost_seconds, j.code
+    FROM shop_offers so
+    JOIN jokers j ON j.id = so.joker_id
+    WHERE so.match_id = ${matchId}::uuid
+      AND so.match_player_id = ${bot.id}::uuid
+      AND so.cycle_index = ${cycle}
+      AND so.purchased = FALSE
+      AND so.expired = FALSE
+  `
+
+  const ranked = [...(offers as Array<{ id: string; cost_seconds: number; code: string }>)].sort(
+    (a, b) => (JOKER_BUY_PRIORITY[b.code] ?? 0) - (JOKER_BUY_PRIORITY[a.code] ?? 0),
+  )
+
+  let timeMs = Number(bot.time_ms ?? 0)
+  for (const offer of ranked) {
+    if (free <= 0) break
+    const costMs = Number(offer.cost_seconds) * 1000
+    if (timeMs - costMs < 25_000) continue
+    try {
+      await sql`SELECT * FROM fn_buy_joker(${botUid}, ${matchId}::uuid, ${offer.id}::uuid)`
+      timeMs -= costMs
+      free--
+    } catch (err) {
+      console.warn('bot buy failed', offer.code, err)
+    }
+  }
+
+  return (await getState(matchId, humanUid)) ?? state
 }
 
 matchesRouter.post('/:id/shop/close', requireAuth, async (req, res, next) => {
@@ -431,7 +728,12 @@ matchesRouter.post('/:id/shop/close', requireAuth, async (req, res, next) => {
     // Si ya salió de shop (ambos listos / timeout), el bot puede mover
     const match = state?.match as { status?: string } | undefined
     if (match?.status === 'active') {
-      state = await maybeBotMove(req.params.id, state!, req.user!.uid)
+      try {
+        state = await maybeBotMove(req.params.id, state!, req.user!.uid)
+      } catch (botErr) {
+        console.warn('maybeBotMove after shop close failed', botErr)
+        state = (await getState(req.params.id, req.user!.uid)) ?? state
+      }
     }
     res.json({ state })
   } catch (err) {
@@ -446,7 +748,12 @@ matchesRouter.post('/:id/shop/timeout', requireAuth, async (req, res, next) => {
     let state = await getState(req.params.id, req.user!.uid)
     const match = state?.match as { status?: string } | undefined
     if (match?.status === 'active') {
-      state = await maybeBotMove(req.params.id, state!, req.user!.uid)
+      try {
+        state = await maybeBotMove(req.params.id, state!, req.user!.uid)
+      } catch (botErr) {
+        console.warn('maybeBotMove after shop timeout failed', botErr)
+        state = (await getState(req.params.id, req.user!.uid)) ?? state
+      }
     }
     res.json({ state })
   } catch (err) {
@@ -736,6 +1043,56 @@ matchesRouter.post('/:id/resign', requireAuth, async (req, res, next) => {
     const state = await getState(req.params.id, req.user!.uid)
     res.json({ state })
   } catch (err) {
+    next(err)
+  }
+})
+
+/** Unirse como espectador (Neon = autoridad; idempotente por ON CONFLICT). */
+matchesRouter.post('/:id/spectate', requireAuth, async (req, res, next) => {
+  try {
+    await sql`SELECT * FROM fn_join_spectate(${req.user!.uid}, ${req.params.id}::uuid)`
+    const state = await getState(req.params.id, req.user!.uid)
+    res.json({ state })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : ''
+    if (message.includes('match not found')) {
+      res.status(404).json({ error: 'match not found' })
+      return
+    }
+    if (
+      message.includes('spectators disabled') ||
+      message.includes('players cannot spectate') ||
+      message.includes('spectator cap reached')
+    ) {
+      res.status(409).json({ error: message })
+      return
+    }
+    next(err)
+  }
+})
+
+const spectatorEmojiSchema = z.object({
+  emoji: z.string().trim().min(1).max(8),
+})
+
+/** Emoji de espectador. Neon valida pertenencia + cooldown; el fan-out en vivo lo hace el cliente vía Portal. */
+matchesRouter.post('/:id/spectator-emoji', requireAuth, async (req, res, next) => {
+  try {
+    const body = spectatorEmojiSchema.parse(req.body ?? {})
+    const rows = await sql`
+      SELECT * FROM fn_send_spectator_emoji(${req.user!.uid}, ${req.params.id}::uuid, ${body.emoji})
+    `
+    res.json({ ok: true, emoji: rows[0] })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : ''
+    if (message.includes('not spectating')) {
+      res.status(403).json({ error: 'not spectating' })
+      return
+    }
+    if (message.includes('emoji cooldown')) {
+      res.status(429).json({ error: 'emoji cooldown' })
+      return
+    }
     next(err)
   }
 })

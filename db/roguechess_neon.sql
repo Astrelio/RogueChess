@@ -805,45 +805,89 @@ BEGIN
 END;
 $$;
 
+DROP FUNCTION IF EXISTS fn_give_super_like(TEXT, TEXT);
 CREATE OR REPLACE FUNCTION fn_give_super_like(p_from_firebase_uid TEXT, p_to_username TEXT)
-RETURNS TABLE (ok BOOLEAN, message TEXT, to_profile_id UUID, popularity_score INTEGER)
+RETURNS TABLE (ok BOOLEAN, message TEXT, liked_profile_id UUID, popularity INTEGER)
 LANGUAGE plpgsql AS $$
-DECLARE v_from profiles; v_to profiles; v_today DATE := (now() AT TIME ZONE 'utc')::date;
+DECLARE
+  v_from profiles;
+  v_to profiles;
+  v_today DATE := (now() AT TIME ZONE 'utc')::date;
+  v_pop INTEGER;
 BEGIN
   SELECT * INTO v_from FROM profiles WHERE firebase_uid = p_from_firebase_uid;
-  IF NOT FOUND THEN RETURN QUERY SELECT FALSE, 'sender not found'::TEXT, NULL::UUID, NULL::INTEGER; RETURN; END IF;
+  IF NOT FOUND THEN
+    RETURN QUERY SELECT FALSE, 'sender not found'::TEXT, NULL::UUID, NULL::INTEGER;
+    RETURN;
+  END IF;
+
   SELECT * INTO v_to FROM profiles WHERE lower(username) = lower(trim(p_to_username));
-  IF NOT FOUND THEN RETURN QUERY SELECT FALSE, 'target not found'::TEXT, NULL::UUID, NULL::INTEGER; RETURN; END IF;
-  IF v_from.id = v_to.id THEN RETURN QUERY SELECT FALSE, 'cannot like yourself'::TEXT, NULL::UUID, NULL::INTEGER; RETURN; END IF;
+  IF NOT FOUND THEN
+    RETURN QUERY SELECT FALSE, 'target not found'::TEXT, NULL::UUID, NULL::INTEGER;
+    RETURN;
+  END IF;
+
+  IF v_from.id = v_to.id THEN
+    RETURN QUERY SELECT FALSE, 'cannot like yourself'::TEXT, NULL::UUID, NULL::INTEGER;
+    RETURN;
+  END IF;
+
   IF EXISTS (
     SELECT 1 FROM super_likes sl
     WHERE sl.from_profile_id = v_from.id
       AND sl.to_profile_id = v_to.id
       AND sl.liked_on = v_today
   ) THEN
-    RETURN QUERY SELECT FALSE, 'already liked today'::TEXT, v_to.id, v_to.popularity_score; RETURN;
+    SELECT p.popularity_score INTO v_pop FROM profiles p WHERE p.id = v_to.id;
+    RETURN QUERY SELECT FALSE, 'already liked today'::TEXT, v_to.id, v_pop;
+    RETURN;
   END IF;
-  INSERT INTO super_likes (from_profile_id, to_profile_id, liked_on) VALUES (v_from.id, v_to.id, v_today);
-  SELECT p.popularity_score INTO v_to.popularity_score FROM profiles p WHERE p.id = v_to.id;
-  RETURN QUERY SELECT TRUE, 'ok'::TEXT, v_to.id, v_to.popularity_score;
+
+  INSERT INTO super_likes (from_profile_id, to_profile_id, liked_on)
+  VALUES (v_from.id, v_to.id, v_today);
+
+  SELECT p.popularity_score INTO v_pop FROM profiles p WHERE p.id = v_to.id;
+  RETURN QUERY SELECT TRUE, 'ok'::TEXT, v_to.id, v_pop;
 END;
 $$;
 
+DROP FUNCTION IF EXISTS fn_give_developer_heart(TEXT, TEXT);
 CREATE OR REPLACE FUNCTION fn_give_developer_heart(p_from_firebase_uid TEXT, p_developer_slug TEXT)
-RETURNS TABLE (ok BOOLEAN, message TEXT, developer_id UUID, heart_count INTEGER)
+RETURNS TABLE (ok BOOLEAN, message TEXT, liked_developer_id UUID, hearts INTEGER)
 LANGUAGE plpgsql AS $$
-DECLARE v_from profiles; v_dev developers;
+DECLARE
+  v_from profiles;
+  v_dev developers;
+  v_hearts INTEGER;
 BEGIN
   SELECT * INTO v_from FROM profiles WHERE firebase_uid = p_from_firebase_uid;
-  IF NOT FOUND THEN RETURN QUERY SELECT FALSE, 'sender not found'::TEXT, NULL::UUID, NULL::INTEGER; RETURN; END IF;
-  SELECT * INTO v_dev FROM developers WHERE slug = lower(trim(p_developer_slug)) AND is_active;
-  IF NOT FOUND THEN RETURN QUERY SELECT FALSE, 'developer not found'::TEXT, NULL::UUID, NULL::INTEGER; RETURN; END IF;
-  IF EXISTS (SELECT 1 FROM developer_hearts WHERE from_profile_id = v_from.id AND developer_id = v_dev.id) THEN
-    RETURN QUERY SELECT FALSE, 'already hearted'::TEXT, v_dev.id, v_dev.heart_count; RETURN;
+  IF NOT FOUND THEN
+    RETURN QUERY SELECT FALSE, 'sender not found'::TEXT, NULL::UUID, NULL::INTEGER;
+    RETURN;
   END IF;
-  INSERT INTO developer_hearts (from_profile_id, developer_id) VALUES (v_from.id, v_dev.id);
-  SELECT d.heart_count INTO v_dev.heart_count FROM developers d WHERE d.id = v_dev.id;
-  RETURN QUERY SELECT TRUE, 'ok'::TEXT, v_dev.id, v_dev.heart_count;
+
+  SELECT * INTO v_dev
+  FROM developers
+  WHERE slug = lower(trim(p_developer_slug)) AND is_active;
+  IF NOT FOUND THEN
+    RETURN QUERY SELECT FALSE, 'developer not found'::TEXT, NULL::UUID, NULL::INTEGER;
+    RETURN;
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM developer_hearts dh
+    WHERE dh.from_profile_id = v_from.id AND dh.developer_id = v_dev.id
+  ) THEN
+    SELECT d.heart_count INTO v_hearts FROM developers d WHERE d.id = v_dev.id;
+    RETURN QUERY SELECT FALSE, 'already hearted'::TEXT, v_dev.id, v_hearts;
+    RETURN;
+  END IF;
+
+  INSERT INTO developer_hearts (from_profile_id, developer_id)
+  VALUES (v_from.id, v_dev.id);
+
+  SELECT d.heart_count INTO v_hearts FROM developers d WHERE d.id = v_dev.id;
+  RETURN QUERY SELECT TRUE, 'ok'::TEXT, v_dev.id, v_hearts;
 END;
 $$;
 
@@ -914,11 +958,21 @@ RETURNS INTEGER LANGUAGE sql STABLE AS $$
   WHERE match_player_id = p_match_player_id AND status = 'owned';
 $$;
 
-CREATE OR REPLACE FUNCTION fn_pick_random_dimension()
+CREATE OR REPLACE FUNCTION fn_pick_random_dimension(
+  p_exclude dimension_code DEFAULT NULL,
+  p_used dimension_code[] DEFAULT NULL
+)
 RETURNS dimension_code LANGUAGE sql STABLE AS $$
   SELECT code FROM dimensions
-  WHERE is_playable AND code <> 'primo'
-  ORDER BY random() * weight DESC
+  WHERE is_playable
+    AND code <> 'primo'
+    AND (p_exclude IS NULL OR code <> p_exclude)
+    AND (
+      p_used IS NULL
+      OR cardinality(p_used) = 0
+      OR NOT (code = ANY (p_used))
+    )
+  ORDER BY random() * GREATEST(weight, 1) DESC
   LIMIT 1;
 $$;
 
@@ -1423,11 +1477,36 @@ $$;
 
 CREATE OR REPLACE FUNCTION fn_reveal_dimension(p_match_id UUID)
 RETURNS matches LANGUAGE plpgsql AS $$
-DECLARE v_match matches; v_dim dimension_code; v_cycle INT;
+DECLARE
+  v_match matches;
+  v_dim dimension_code;
+  v_cycle INT;
+  v_used dimension_code[];
 BEGIN
   SELECT * INTO v_match FROM matches WHERE id = p_match_id FOR UPDATE;
   v_cycle := v_match.cycle_index + 1;
-  v_dim := fn_pick_random_dimension();
+
+  -- Mazo sin repetición hasta agotar; luego reinicia (sin repetir la inmediata anterior)
+  SELECT COALESCE(array_agg(DISTINCT d), '{}'::dimension_code[])
+  INTO v_used
+  FROM (
+    SELECT h.dimension AS d
+    FROM match_dimension_history h
+    WHERE h.match_id = p_match_id
+      AND h.dimension <> 'primo'
+    UNION
+    SELECT v_match.current_dimension
+    WHERE v_match.current_dimension IS NOT NULL
+      AND v_match.current_dimension <> 'primo'
+  ) x;
+
+  v_dim := fn_pick_random_dimension(NULL, v_used);
+  IF v_dim IS NULL THEN
+    v_dim := fn_pick_random_dimension(v_match.current_dimension, NULL);
+  END IF;
+  IF v_dim IS NULL THEN
+    v_dim := fn_pick_random_dimension(NULL, NULL);
+  END IF;
 
   -- limpiar celdas de fase anterior (excepto si quieres persistir — ruina es por fase)
   UPDATE match_board_cells SET is_active = FALSE WHERE match_id = p_match_id AND is_active;
@@ -1466,7 +1545,11 @@ BEGIN
       ORDER BY random()
       LIMIT 4
     ) s
-    ON CONFLICT DO NOTHING;
+    ON CONFLICT (match_id, square, effect) DO UPDATE SET
+      is_active = TRUE,
+      time_bonus_min_s = EXCLUDED.time_bonus_min_s,
+      time_bonus_max_s = EXCLUDED.time_bonus_max_s,
+      created_cycle = EXCLUDED.created_cycle;
 
     -- spawn sobre pieza: absorbe inmediatamente (se resuelve en motor; aquí marcamos)
   END IF;
@@ -1759,13 +1842,50 @@ $$;
 CREATE OR REPLACE PROCEDURE sp_seed_developers()
 LANGUAGE plpgsql AS $$
 BEGIN
-  INSERT INTO developers (slug, name, role, bio, sort_order) VALUES
-    ('lead', 'Lead Dev', 'Game Design & Frontend', 'Arquitectura de RogueChess y UX estilo Balatro.', 1),
-    ('engine', 'Engine Dev', 'Chess Rules & Dimensions', 'Interceptor de reglas, dimensiones y comodines.', 2),
-    ('realtime', 'Realtime Dev', 'Portal & Sync', 'Estado compartido, relojes y espectadores.', 3)
+  UPDATE developers SET is_active = FALSE, updated_at = now()
+  WHERE slug IN ('lead', 'engine', 'realtime', 'astreli');
+
+  INSERT INTO developers (slug, name, role, bio, avatar_url, sort_order, is_active) VALUES
+    (
+      'astrelio',
+      'Astrelio',
+      'Conceptualización & gameplay',
+      'Director de la idea y programador principal de las mecánicas y toda la lógica de partida.',
+      '/devs/astrelio.webp',
+      1,
+      TRUE
+    ),
+    (
+      'anderson',
+      'Anderson Flores',
+      'Animación & dimensiones',
+      'Diseñó las animaciones de los comodines y de las dimensiones.',
+      '/devs/anderson.webp',
+      2,
+      TRUE
+    ),
+    (
+      'angel',
+      'Angel Carias',
+      'Sistemas sociales',
+      'Ensambló la lógica de los sistemas sociales de la app: perfil, ranking, presencia y retos.',
+      '/devs/angel.webp',
+      3,
+      TRUE
+    ),
+    (
+      'ticas',
+      'Oscar Ticas',
+      'Audio',
+      'Programó el reproductor de música nativo.',
+      '/devs/ticas.webp',
+      4,
+      TRUE
+    )
   ON CONFLICT (slug) DO UPDATE SET
     name = EXCLUDED.name, role = EXCLUDED.role, bio = EXCLUDED.bio,
-    sort_order = EXCLUDED.sort_order, is_active = TRUE;
+    avatar_url = EXCLUDED.avatar_url, sort_order = EXCLUDED.sort_order,
+    is_active = TRUE, updated_at = now();
 END;
 $$;
 
@@ -1783,28 +1903,28 @@ LANGUAGE plpgsql AS $$
 BEGIN
   INSERT INTO dimensions (code, name, slug, description, rules_json, visual_hint, can_kill_pieces, weight, is_playable, sort_order) VALUES
   ('primo', 'Tablero Primo', 'primo',
-   'Ajedrez clásico sin anomalías. Primera fase de cada partida.',
+   'Ajedrez clásico, sin rarezas. La primera fase de cada partida: coloca y toma tempo.',
    '{"max_range":null,"forced_capture":false}'::jsonb, 'tablero limpio', FALSE, 0, FALSE, 0),
   ('espejo', 'Dimensión Espejo', 'espejo',
-   'Ejes de movimiento invertidos. Peones van hacia tu propia fila y pueden coronar ahí. Enroque: comando invertido, posición final clásica.',
+   'Todo se invierte: derecha es izquierda, arriba es abajo. Los peones avanzan hacia tu propio bando (y pueden coronar ahí).',
    '{"invert_controls":true,"pawn_reverse":true,"castle_command_invert":true}'::jsonb, 'espejo', FALSE, 1, TRUE, 1),
   ('bluriel', 'Dimensión Bluriel', 'bluriel',
-   'Tras mover, tus piezas se vuelven borrosas/invisibles al rival. El jaque siempre se anuncia. (Desactivada hasta implementar niebla.)',
+   'Tras tu jugada, el rival ve tus piezas borrosas. El jaque siempre se anuncia, niebla o no.',
    '{"fog_after_move":true,"announce_check":true}'::jsonb, 'niebla', FALSE, 0, FALSE, 2),
   ('gravitacional', 'Dimensión Gravitacional', 'gravitacional',
-   'Piezas de largo alcance (Q,R,B) máximo 3 casillas. Sin jaque ni pins más allá de 3.',
+   'Dama, torre y alfil solo llegan a 3 casillas. Más lejos no dan jaque ni clavan.',
    '{"max_range":3,"affects":["q","r","b"]}'::jsonb, 'gravedad', FALSE, 1, TRUE, 3),
   ('cadena_sangre', 'Dimensión Cadena de Sangre', 'cadena-sangre',
-   'Si hay captura legal disponible, es obligatoria. Exento si la captura deja al rey en jaque.',
+   'Si puedes capturar de forma legal, debes hacerlo. No cuentan las capturas que dejen a tu rey en jaque.',
    '{"forced_capture":true,"legal_only":true,"king_safety_override":true}'::jsonb, 'sangre', FALSE, 1, TRUE, 4),
   ('ruina', 'Dimensión Ruina', 'ruina',
-   'Casillas donde hubo captura quedan destruidas. Deslizantes no atraviesan; caballos pueden saltar a casilla sana.',
+   'Cada captura deja esa casilla destruida. Nadie la pisa ni la atraviesa el resto de la fase (el caballo sí salta).',
    '{"ruin_on_capture":true,"block_sliders":true,"knights_jump":true}'::jsonb, 'ruinas', FALSE, 1, TRUE, 5),
   ('mercado_negro', 'El Mercado Negro', 'mercado-negro',
-   '4 monolitos de tiempo (+40–60s). Ocupar/atravesar otorga tiempo. Capturas dan hasta +15s acumulables. Spawn sobre pieza: absorbe y desaparece.',
+   'Monolitos de tiempo en el tablero: písalos o atraviésalos para ganar segundos. Capturar también suma reloj a tu favor.',
    '{"monoliths":4,"bonus_min":40,"bonus_max":60,"capture_bonus_cap":15}'::jsonb, 'monolitos', FALSE, 1, TRUE, 6),
   ('fragilidad', 'Dimensión Fragilidad', 'fragilidad',
-   'Si una pieza (no rey) queda amenazada por dos enemigos al final del turno, se destruye. El rey es inmune.',
+   'Si al cerrar el turno una pieza (no el rey) está amenazada por dos enemigos, se destroza sola.',
    '{"double_threat_destroys":true,"resolve_end_of_turn":true,"king_immune":true}'::jsonb, 'cristal', TRUE, 1, TRUE, 7)
   ON CONFLICT (code) DO UPDATE SET
     name = EXCLUDED.name, description = EXCLUDED.description, rules_json = EXCLUDED.rules_json,
@@ -1818,49 +1938,49 @@ LANGUAGE plpgsql AS $$
 BEGIN
   -- Espectral
   INSERT INTO jokers (code, name, faction, rarity, timing, cost_seconds, description, rules_json, is_passive, shop_weight) VALUES
-  ('paso_fantasma', 'Paso Fantasma', 'spectral', 'common', 'instant', 10,
-   'Permite a una pieza saltar/atravesar piezas ocupadas en su trayectoria.',
+  ('paso_fantasma', 'Paso Fantasma', 'spectral', 'common', 'instant', 8,
+   'Tu próxima jugada puede saltar o atravesar piezas en la trayectoria.',
    '{"ghost_path":true}'::jsonb, FALSE, 3),
-  ('imperius', 'Imperius', 'spectral', 'legendary', 'duration', 60,
-   'Toma el control de una pieza enemiga durante 1 turno. No funciona en el Rey. Fuego amigo permitido.',
+  ('imperius', 'Imperius', 'spectral', 'legendary', 'instant', 32,
+   'Mueves ahora una pieza enemiga (no el rey) como si fuera tuya. Puede capturar incluso a las suyas.',
    '{"control_enemy":true,"turns":1,"king_immune":true,"friendly_fire":true}'::jsonb, FALSE, 1),
-  ('capa_invisibilidad', 'Capa de invisibilidad', 'spectral', 'epic', 'duration', 30,
-   'Tu pieza se vuelve invisible para el rival hasta que ataque o sea atacada.',
+  ('capa_invisibilidad', 'Capa de invisibilidad', 'spectral', 'epic', 'duration', 18,
+   'Una pieza tuya queda invisible para el rival hasta que capture o la capturen.',
    '{"invisible_until_combat":true}'::jsonb, FALSE, 2),
-  ('morsmordre', 'Morsmordre', 'spectral', 'epic', 'instant', 35,
-   'Obliga a una pieza enemiga adyacente a retroceder una casilla. Falla en borde/aliado enemigo (gasta tiempo). Aplasta y mata si hay pieza tuya detrás.',
+  ('morsmordre', 'Morsmordre', 'spectral', 'epic', 'instant', 20,
+   'Empuja una casilla atrás a una pieza enemiga junto a la tuya. Si choca con otra tuya, la aplastas. Sin espacio o con Expecto Patronum, falla.',
    '{"push_back":1,"adjacent_only":true,"crush_own":true,"fail_on_blocked":true}'::jsonb, FALSE, 2),
-  ('expecto_patronum', 'Expecto Patronum', 'spectral', 'legendary', 'passive', 20,
-   'Inhabilita el efecto de miedo de Morsmordre en todo el tablero durante toda la partida.',
+  ('expecto_patronum', 'Expecto Patronum', 'spectral', 'legendary', 'passive', 15,
+   'Anula Morsmordre en todo el tablero el resto de la partida.',
    '{"negates":"morsmordre","duration":"match"}'::jsonb, TRUE, 1),
   -- Antimateria
-  ('bombarda', 'Bombarda', 'antimatter', 'epic', 'instant', 40,
-   'Sacrifica un peón propio para quemar un área 3x3 temporalmente. No mata: empuja piezas a casilla segura. Rey inmune a muerte.',
+  ('bombarda', 'Bombarda', 'antimatter', 'epic', 'instant', 22,
+   'Sacrifica un peón tuyo y quema un área 3×3 este ciclo. Las piezas se empujan a casillas seguras (el rey no muere).',
    '{"sacrifice_pawn":true,"burn_3x3":true,"push_not_kill":true,"king_immune":true}'::jsonb, FALSE, 2),
-  ('aparicion', 'Aparición', 'antimatter', 'common', 'instant', 20,
-   'Intercambia la posición de dos de tus propias piezas.',
+  ('aparicion', 'Aparición', 'antimatter', 'common', 'instant', 12,
+   'Intercambia de casilla dos piezas tuyas (un peón no puede acabar en la última fila).',
    '{"swap_own_pieces":true}'::jsonb, FALSE, 3),
-  ('pocion_multijugos', 'Poción Multijugos', 'antimatter', 'legendary', 'duration', 65,
-   'Transforma un peón en Reina por 1 turno; luego el peón muere. El jaque de la reina falsa es válido durante el turno rival.',
+  ('pocion_multijugos', 'Poción Multijugos', 'antimatter', 'legendary', 'duration', 35,
+   'Un peón tuyo actúa como dama durante tu jugada; al ceder el turno, se desvanece.',
    '{"pawn_to_queen_turns":1,"then_dies":true,"check_valid_while_active":true,"tag_was_pawn":true}'::jsonb, FALSE, 1),
-  ('defodio', 'Defodio', 'antimatter', 'legendary', 'duration', 60,
-   'Trampa en casilla vacía por 1 turno. Única anomalía que asesina instantáneamente (excepto Rey).',
+  ('defodio', 'Defodio', 'antimatter', 'legendary', 'duration', 32,
+   'Trampa en una casilla vacía por ~1 turno: quien caiga muere al instante (salvo el rey).',
    '{"trap_empty_square":true,"turns":1,"instant_kill":true,"king_immune":true}'::jsonb, FALSE, 1),
-  ('avada_kedavra', 'Avada Kedavra', 'antimatter', 'legendary', 'instant', 40,
-   'Asesina cualquier peón o pieza que haya sido peón (incluye coronaciones legítimas). Requiere flag was_pawn.',
+  ('avada_kedavra', 'Avada Kedavra', 'antimatter', 'legendary', 'instant', 25,
+   'Elimina un peón enemigo o una pieza que haya sido peón (coronada o Multijugos).',
    '{"kills_was_pawn":true,"king_immune":true}'::jsonb, FALSE, 1),
   -- Tempus
   ('axio_tempus', 'Axio Tempus', 'tempus', 'common', 'instant', 5,
-   'Roba 10 segundos del reloj del oponente y los suma al tuyo.',
+   'Roba 10 segundos del reloj rival y súmalos al tuyo.',
    '{"steal_seconds":10}'::jsonb, FALSE, 3),
-  ('arresto_momentum', 'Arresto Momentum', 'tempus', 'legendary', 'duration', 50,
-   'Acelera el reloj del rival al doble durante su siguiente turno. Anulado si el rival tiene Petrificus activo.',
+  ('arresto_momentum', 'Arresto Momentum', 'tempus', 'legendary', 'duration', 28,
+   'El reloj del rival corre al doble en su próximo turno. Petrificus Totalus lo anula.',
    '{"opponent_clock_multiplier":2,"next_turn":true,"beaten_by":"petrificus_totalus"}'::jsonb, FALSE, 1),
-  ('petrificus_totalus', 'Petrificus Totalus', 'tempus', 'epic', 'duration', 30,
-   'Tu reloj se detiene por completo durante tu próximo movimiento. Prioridad absoluta sobre Arresto Momentum.',
+  ('petrificus_totalus', 'Petrificus Totalus', 'tempus', 'epic', 'duration', 18,
+   'Tu reloj se congela durante tu próximo movimiento. Gana a Arresto Momentum.',
    '{"freeze_own_clock_next_move":true,"priority_over":"arresto_momentum"}'::jsonb, FALSE, 2),
-  ('giratiempo', 'Giratiempo', 'tempus', 'legendary', 'duration', 45,
-   'Una de tus piezas se mueve dos veces en el mismo turno (máx. 1 captura). Si el primer movimiento da jaque, se cancela el segundo.',
+  ('giratiempo', 'Giratiempo', 'tempus', 'legendary', 'duration', 28,
+   'Mueve una pieza tuya dos veces en el mismo turno (máx. 1 captura). Si el primer movimiento da jaque, se cancela el segundo.',
    '{"double_move":true,"max_captures":1,"check_ends_combo":true}'::jsonb, FALSE, 1)
   ON CONFLICT (code) DO UPDATE SET
     name = EXCLUDED.name, faction = EXCLUDED.faction, rarity = EXCLUDED.rarity,

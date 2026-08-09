@@ -497,7 +497,7 @@ test('giratiempo: 2ª jugada ya pasa el turno', () => {
   }
 })
 
-test('pocion_multijugos: peón a reina y colapso tras el turno rival', () => {
+test('pocion_multijugos: peón a reina y colapso al ceder tu turno', () => {
   const cast = applyJoker(makeCtx({ fen: START_FEN, ply: 10 }), 'pocion_multijugos', {
     square: 'e2',
   })
@@ -506,15 +506,15 @@ test('pocion_multijugos: peón a reina y colapso tras el turno rival', () => {
     assert.ok(cast.newFen!.split(' ')[0].includes('PPPPQPPP'))
     const up = cast.flagOps.find((f) => f.op === 'upsert')
     assert.ok(up && up.op === 'upsert' && up.multijugosQueen)
-    assert.equal(up.multijugosDiesPly, 12)
+    assert.equal(up.multijugosDiesPly, 11)
   }
 
-  // Tras la respuesta del rival (ply avanza a dies_ply), la reina muere al devolver el turno
+  // Tras mover con la reina falsa, colapsa al pasar el turno
   const ctx = makeCtx({
-    fen: '7k/8/8/8/8/8/4Q3/K7 b - - 0 5',
-    turnColor: 'black',
-    moverColor: 'black',
-    ply: 11,
+    fen: '7k/8/8/8/8/8/4Q3/K7 w - - 0 5',
+    turnColor: 'white',
+    moverColor: 'white',
+    ply: 10,
     flags: [
       flag({
         piece_uid: 'mj:e2:10',
@@ -522,17 +522,17 @@ test('pocion_multijugos: peón a reina y colapso tras el turno rival', () => {
         color: 'white',
         kind: 'q',
         multijugos_queen: true,
-        multijugos_dies_ply: 12,
+        multijugos_dies_ply: 11,
         payload: { created_fullmove: 5 },
       }),
     ],
   })
-  const move = applyPlayerMove(ctx, { from: 'h8', to: 'h7' })
+  const move = applyPlayerMove(ctx, { from: 'e2', to: 'e7' })
   assert.equal(move.ok, true)
   if (move.ok) {
     assert.ok(!move.fenAfter.split(' ')[0].includes('Q'), 'la reina multijugos colapsa')
     assert.ok(move.events.some((e) => e.includes('multijugos')))
-    assert.equal(move.fenAfter.split(' ')[1], 'w')
+    assert.equal(move.fenAfter.split(' ')[1], 'b')
   }
 })
 

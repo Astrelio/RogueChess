@@ -5,8 +5,10 @@ import { useAuth } from '@/auth/AuthContext'
 import type {
   MatchBoardSnapshot,
   MatchEmotePayload,
+  MatchJokerFxPayload,
   PieceDragPayload,
   ShopReadyPayload,
+  SpectatorEmojiPayload,
 } from '@/lib/portal'
 import type { MatchState } from '@/types/match'
 
@@ -25,6 +27,21 @@ type PublishShopReadyFn = (payload: {
   cycle_index: number
 }) => Promise<void>
 type PublishEmoteFn = (payload: { matchId: string; uid: string; emote: string }) => Promise<void>
+type PublishJokerFxFn = (payload: {
+  matchId: string
+  uid: string
+  code: string
+  squares: string[]
+  fen?: string
+}) => Promise<void>
+type PublishSpectatorEmojiFn = (payload: {
+  matchId: string
+  uid: string
+  username?: string
+  emoji: string
+  targetColor: 'white' | 'black'
+  emojiId?: string
+}) => Promise<void>
 
 export type MatchPortalPeerInfo = {
   status: string
@@ -36,11 +53,14 @@ export type MatchPortalPeerInfo = {
 export function MatchPortalBridge({
   matchId,
   color,
+  isSpectator,
   onDirty,
   onBoardPulse,
   onPieceDrag,
   onShopReady,
   onEmote,
+  onJokerFx,
+  onSpectatorEmoji,
   onChannelReady,
   onPeerInfo,
   publishRef,
@@ -48,15 +68,20 @@ export function MatchPortalBridge({
   publishBoardRef,
   publishShopReadyRef,
   publishEmoteRef,
+  publishJokerFxRef,
+  publishSpectatorEmojiRef,
   sendActivityRef,
 }: {
   matchId: string
   color?: string
+  isSpectator?: boolean
   onDirty: (reason: string) => void
   onBoardPulse: (board: MatchBoardSnapshot) => void
   onPieceDrag: (drag: PieceDragPayload) => void
   onShopReady?: (p: ShopReadyPayload) => void
   onEmote?: (p: MatchEmotePayload) => void
+  onJokerFx?: (p: MatchJokerFxPayload) => void
+  onSpectatorEmoji?: (p: SpectatorEmojiPayload) => void
   onChannelReady?: () => void
   onPeerInfo?: (info: MatchPortalPeerInfo) => void
   publishRef: MutableRefObject<PublishFn | null>
@@ -64,6 +89,8 @@ export function MatchPortalBridge({
   publishBoardRef?: MutableRefObject<PublishBoardFn | null>
   publishShopReadyRef?: MutableRefObject<PublishShopReadyFn | null>
   publishEmoteRef?: MutableRefObject<PublishEmoteFn | null>
+  publishJokerFxRef?: MutableRefObject<PublishJokerFxFn | null>
+  publishSpectatorEmojiRef?: MutableRefObject<PublishSpectatorEmojiFn | null>
   sendActivityRef?: MutableRefObject<((kind: string) => void) | null>
 }) {
   const { profile, user } = useAuth()
@@ -71,13 +98,13 @@ export function MatchPortalBridge({
 
   const metadata = useMemo(
     () => ({
-      role: 'player',
+      role: isSpectator ? 'spectator' : 'player',
       color: color ?? null,
       username: profile?.username,
       uid: user?.uid,
       joinedAt: joinedAtRef.current,
     }),
-    [color, profile?.username, user?.uid],
+    [color, isSpectator, profile?.username, user?.uid],
   )
 
   const {
@@ -86,6 +113,8 @@ export function MatchPortalBridge({
     publishBoardPulse,
     publishShopReady,
     publishEmote,
+    publishJokerFx,
+    publishSpectatorEmoji,
     sendActivity,
     presence,
     status,
@@ -98,6 +127,8 @@ export function MatchPortalBridge({
     onPieceDrag,
     onShopReady,
     onEmote,
+    onJokerFx,
+    onSpectatorEmoji,
     onChannelReady,
   })
 
@@ -138,6 +169,22 @@ export function MatchPortalBridge({
       publishEmoteRef.current = null
     }
   }, [publishEmote, publishEmoteRef])
+
+  useEffect(() => {
+    if (!publishJokerFxRef) return
+    publishJokerFxRef.current = publishJokerFx
+    return () => {
+      publishJokerFxRef.current = null
+    }
+  }, [publishJokerFx, publishJokerFxRef])
+
+  useEffect(() => {
+    if (!publishSpectatorEmojiRef) return
+    publishSpectatorEmojiRef.current = publishSpectatorEmoji
+    return () => {
+      publishSpectatorEmojiRef.current = null
+    }
+  }, [publishSpectatorEmoji, publishSpectatorEmojiRef])
 
   useEffect(() => {
     if (!sendActivityRef) return

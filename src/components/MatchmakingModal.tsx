@@ -89,7 +89,7 @@ export function MatchmakingModal({
                   className="text-center"
                 >
                   <p className="font-label text-[10px] uppercase tracking-[0.22em] text-[var(--color-primary)]">
-                    Matchmaking
+                    Buscando partida
                   </p>
                   <h2
                     id="matchmaking-title"
@@ -99,8 +99,8 @@ export function MatchmakingModal({
                   </h2>
                   <p className="mt-3 text-sm text-[var(--color-ink-muted)]">
                     {peersSearching > 0
-                      ? `${peersSearching} jugador${peersSearching === 1 ? '' : 'es'} en cola · Portal`
-                      : `Explorando el lobby… espera ~${Math.ceil(estimatedMs / 1000)}s, si no → RogueBot`}
+                      ? `${peersSearching} jugador${peersSearching === 1 ? '' : 'es'} buscando ahora`
+                      : `Explorando el lobby… espera ~${Math.ceil(estimatedMs / 1000)}s; si no hay nadie, juegas contra RogueBot`}
                   </p>
 
                   <motion.p
@@ -196,8 +196,8 @@ export function MatchmakingModal({
                     transition={{ delay: 0.4 }}
                   >
                     {vsBot
-                      ? 'Nadie en cola — entrando contra el bot…'
-                      : 'Rival humano emparejado — entrando al tablero…'}
+                      ? 'Nadie en cola — empezando contra el bot…'
+                      : 'Rival encontrado — entrando al tablero…'}
                   </motion.p>
                   <motion.div
                     className="mx-auto mt-8 h-px w-24 origin-center bg-[var(--color-primary-container)]"

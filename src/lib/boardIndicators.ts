@@ -7,6 +7,7 @@ import type { BoardCell, PieceFlag } from '@/types/match'
 export type IndicatorKind =
   | 'move'
   | 'capture'
+  | 'blood_capture'
   | 'joker_hostile'
   | 'joker_ally'
   | 'joker_empty'
@@ -392,6 +393,14 @@ export function indicatorStyle(kind: IndicatorKind): CSSProperties {
         animationName: 'rc-capture-blink',
         backgroundColor: 'rgba(186, 26, 26, 0.18)',
         boxShadow: 'inset 0 0 0 1px rgba(186, 26, 26, 0.32)',
+      }
+    case 'blood_capture':
+      // Ámbar: contraste en casillas rojas de Cadena de Sangre
+      return {
+        ...base,
+        animationName: 'rc-blood-capture-blink',
+        backgroundColor: 'rgba(255, 196, 64, 0.42)',
+        boxShadow: 'inset 0 0 0 2px rgba(255, 210, 90, 0.85)',
       }
     case 'joker_hostile':
       return {

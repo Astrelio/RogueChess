@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { cn } from '@/lib/utils'
 import { factionLabel, jokerArtUrl, rarityLabel } from '@/lib/jokerArt'
@@ -19,6 +20,8 @@ type Props = {
   shaded?: boolean
   /** En tienda: debajo del cursor. En partida: arriba (default). */
   tooltipSide?: 'above' | 'below'
+  /** Tooltip oscuro (dimensiones oscuras). */
+  darkTooltip?: boolean
 }
 
 export function JokerCard({
@@ -33,6 +36,7 @@ export function JokerCard({
   onDragEnd,
   shaded,
   tooltipSide = 'above',
+  darkTooltip,
 }: Props) {
   const [open, setOpen] = useState(false)
   const [pointer, setPointer] = useState({ x: 0, y: 0 })
@@ -63,6 +67,11 @@ export function JokerCard({
     }
   }, [canDrag, disabled, onDragStart, onDragEnd])
 
+  // Si se deshabilita (p.ej. al castear), cerrar tooltip
+  useEffect(() => {
+    if (disabled) setOpen(false)
+  }, [disabled])
+
   const rarityRing =
     joker.rarity === 'legendary'
       ? 'border-[var(--color-primary-container)] shadow-[0_0_0_1px_rgba(212,175,55,0.35)]'
@@ -83,9 +92,9 @@ export function JokerCard({
         onMouseLeave={() => setOpen(false)}
         onMouseMove={(e) => setPointer({ x: e.clientX, y: e.clientY })}
         className={cn(
-          'panel relative overflow-hidden p-1.5 transition disabled:opacity-50',
+          'relative overflow-hidden border bg-white p-1.5 shadow-[0_8px_24px_rgba(0,0,0,0.18)] transition disabled:opacity-50',
           rarityRing,
-          selected && 'ring-2 ring-[var(--color-primary)] ring-offset-2 ring-offset-[var(--color-surface)]',
+          selected && 'ring-2 ring-[var(--color-primary)] ring-offset-2 ring-offset-white',
           canDrag && !disabled && 'cursor-grab active:cursor-grabbing',
           shaded && 'opacity-45 grayscale-[0.35]',
           className,
@@ -99,7 +108,6 @@ export function JokerCard({
           alt=""
           draggable={false}
           className="pointer-events-none h-full w-full object-contain"
-          style={{ mixBlendMode: 'multiply' }}
         />
         {shaded ? (
           <span
@@ -109,36 +117,73 @@ export function JokerCard({
         ) : null}
       </motion.button>
 
-      {/* Tooltip: debajo del cursor solo en tienda; en partida va arriba */}
-      <AnimatePresence>
-        {open ? (
-          <motion.div
-            initial={{ opacity: 0, y: tooltipSide === 'below' ? 4 : -4 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: tooltipSide === 'below' ? 2 : -2 }}
-            transition={{ duration: 0.12 }}
-            className={cn(
-              'pointer-events-none fixed z-[200] w-[min(92vw,320px)] min-w-[260px] -translate-x-1/2',
-              tooltipSide === 'above' && '-translate-y-full',
-            )}
-            style={{
-              left: pointer.x,
-              top: tooltipSide === 'below' ? pointer.y + 18 : pointer.y - 14,
-            }}
-          >
-            <div className="panel border-[var(--color-outline-soft)]/60 bg-[color-mix(in_srgb,#fff_92%,transparent)] p-4 shadow-[0_16px_40px_rgba(115,92,0,0.14)]">
-              <p className="font-display text-base text-[var(--color-primary)]">{joker.name}</p>
-              <p className="font-label mt-1 text-[10px] uppercase tracking-[0.14em] text-[var(--color-ink-muted)]">
-                {rarityLabel[joker.rarity] ?? joker.rarity} · {factionLabel[joker.faction] ?? joker.faction}
-              </p>
-              <p className="mt-2 text-sm leading-snug text-[var(--color-ink-muted)]">{joker.description}</p>
-              <p className="font-label mt-3 text-[11px] uppercase tracking-wider text-[var(--color-primary)]">
-                Coste: −{joker.cost_seconds}s
-              </p>
-            </div>
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
+      {/* Portal: fixed no se rompe si un padre tiene transform (exit inventario) */}
+      {typeof document !== 'undefined'
+        ? createPortal(
+            <AnimatePresence>
+              {open && !disabled ? (
+                <motion.div
+                  initial={{ opacity: 0, y: tooltipSide === 'below' ? 4 : -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: tooltipSide === 'below' ? 2 : -2 }}
+                  transition={{ duration: 0.12 }}
+                  className={cn(
+                    'pointer-events-none fixed z-[200] w-[min(92vw,320px)] min-w-[260px] -translate-x-1/2',
+                    tooltipSide === 'above' && '-translate-y-full',
+                  )}
+                  style={{
+                    left: pointer.x,
+                    top: tooltipSide === 'below' ? pointer.y + 18 : pointer.y - 14,
+                  }}
+                >
+                  <div
+                    className={cn(
+                      'border p-4 shadow-[0_16px_40px_rgba(0,0,0,0.28)] backdrop-blur-md',
+                      darkTooltip
+                        ? 'border-white/15 bg-[color-mix(in_srgb,#12100e_92%,transparent)] text-white'
+                        : 'border-[var(--color-outline-soft)]/60 bg-[color-mix(in_srgb,#fff_92%,transparent)]',
+                    )}
+                  >
+                    <p
+                      className={cn(
+                        'font-display text-base',
+                        darkTooltip ? 'text-white' : 'text-[var(--color-primary)]',
+                      )}
+                    >
+                      {joker.name}
+                    </p>
+                    <p
+                      className={cn(
+                        'font-label mt-1 text-[10px] uppercase tracking-[0.14em]',
+                        darkTooltip ? 'text-white/65' : 'text-[var(--color-ink-muted)]',
+                      )}
+                    >
+                      {rarityLabel[joker.rarity] ?? joker.rarity} ·{' '}
+                      {factionLabel[joker.faction] ?? joker.faction}
+                    </p>
+                    <p
+                      className={cn(
+                        'mt-2 text-sm leading-snug',
+                        darkTooltip ? 'text-white/80' : 'text-[var(--color-ink-muted)]',
+                      )}
+                    >
+                      {joker.description}
+                    </p>
+                    <p
+                      className={cn(
+                        'font-label mt-3 text-[11px] uppercase tracking-wider',
+                        darkTooltip ? 'text-white' : 'text-[var(--color-primary)]',
+                      )}
+                    >
+                      Coste: −{joker.cost_seconds}s
+                    </p>
+                  </div>
+                </motion.div>
+              ) : null}
+            </AnimatePresence>,
+            document.body,
+          )
+        : null}
     </>
   )
 }

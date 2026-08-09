@@ -1,18 +1,22 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { useAuth } from '@/auth/AuthContext'
+import { CustomMatchModal } from '@/components/CustomMatchModal'
 import { PageTransition } from '@/components/PageTransition'
 import { useMatchmaking } from '@/components/MatchmakingProvider'
 import { easeOut, riseItem, stagger } from '@/lib/motion'
 
-const MASCOT_SRC = '/mascot/Bishop.png'
+const MASCOT_SRC = '/mascot/Bishop.webp'
 
 export function LandingPage() {
   const { user, ready } = useAuth()
   const matchmaking = useMatchmaking()
+  const [customOpen, setCustomOpen] = useState(false)
 
   return (
     <PageTransition className="flex min-h-0 flex-1 flex-col justify-center">
+      <CustomMatchModal open={customOpen} onClose={() => setCustomOpen(false)} />
       <section className="relative grid min-h-0 flex-1 items-center gap-4 overflow-hidden lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:gap-6">
         <motion.div variants={stagger} initial="initial" animate="animate" className="relative z-10 max-w-xl">
           <motion.div
@@ -37,7 +41,7 @@ export function LandingPage() {
             variants={riseItem}
             className="mt-4 max-w-md text-sm leading-relaxed text-[var(--color-ink-muted)] sm:mt-5 sm:text-base"
           >
-            Ajedrez rogue-like: dimensiones, comodines y relojes que sangran ventaja.
+            Ajedrez con giros: dimensiones que cambian las reglas, comodines y un reloj que es tu moneda.
           </motion.p>
 
           <motion.div variants={riseItem} className="mt-7 flex flex-wrap gap-3 sm:mt-9">
@@ -57,11 +61,15 @@ export function LandingPage() {
                 >
                   {matchmaking.busy ? 'Buscando…' : 'Partida rápida'}
                 </motion.button>
-                <motion.div whileHover={{ y: -2 }} whileTap={{ scale: 0.98 }}>
-                  <Link to="/ranking" className="btn-ghost inline-block">
-                    Ranking
-                  </Link>
-                </motion.div>
+                <motion.button
+                  type="button"
+                  whileHover={{ y: -2 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => setCustomOpen(true)}
+                  className="btn-ghost"
+                >
+                  Partida personalizada
+                </motion.button>
               </>
             ) : (
               <motion.div whileHover={{ y: -2 }} whileTap={{ scale: 0.98 }}>

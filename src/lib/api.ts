@@ -1,4 +1,4 @@
-import type { Developer, LeaderboardEntry, Profile } from '@/types'
+import type { Developer, LeaderboardEntry, LiveMatchRef, Profile } from '@/types'
 import type { MatchState, Joker } from '@/types/match'
 
 async function request<T>(
@@ -36,7 +36,9 @@ export const api = {
     request<{ entries: LeaderboardEntry[] }>(`/api/leaderboard?limit=${limit}&offset=${offset}`),
 
   getProfile: (username: string) =>
-    request<{ profile: Profile }>(`/api/profiles/${encodeURIComponent(username)}`),
+    request<{ profile: Profile; liveMatch?: LiveMatchRef | null }>(
+      `/api/profiles/${encodeURIComponent(username)}`,
+    ),
 
   updateMe: (token: string, body: { displayName?: string; username?: string; bio?: string | null; avatarUrl?: string | null }) =>
     request<{ profile: Profile }>('/api/profiles/me', { method: 'PATCH', token, body: JSON.stringify(body) }),
@@ -71,15 +73,72 @@ export const api = {
   startQuickMatch: (token: string) =>
     request<{ match: { id: string }; state: MatchState }>('/api/matches/quick', { method: 'POST', token }),
 
-  createChallengeMatch: (token: string, timeControlS = 300) =>
-    request<{ match: { id: string; status: string }; state: MatchState }>('/api/matches/challenge', {
+  createChallengeMatch: (
+    token: string,
+    opts?: {
+      timeControlS?: number
+      allowSpectators?: boolean
+      mode?: 'custom' | 'quick'
+      inviteUsername?: string
+    },
+  ) =>
+    request<{
+      match: { id: string; status: string; invite_code?: string | null; time_control_s?: number }
+      state: MatchState
+    }>('/api/matches/challenge', {
       method: 'POST',
       token,
-      body: JSON.stringify({ timeControlS }),
+      body: JSON.stringify({
+        timeControlS: opts?.timeControlS ?? 300,
+        allowSpectators: opts?.allowSpectators ?? true,
+        mode: opts?.mode ?? 'custom',
+        inviteUsername: opts?.inviteUsername,
+      }),
     }),
+
+  /** Sala personalizada (siempre mode=custom + invite_code). */
+  createCustomMatch: (
+    token: string,
+    opts?: { timeControlS?: number; allowSpectators?: boolean; inviteUsername?: string },
+  ) =>
+    request<{
+      match: { id: string; status: string; invite_code?: string | null; time_control_s?: number }
+      state: MatchState
+    }>('/api/matches/custom', {
+      method: 'POST',
+      token,
+      body: JSON.stringify({
+        timeControlS: opts?.timeControlS ?? 300,
+        allowSpectators: opts?.allowSpectators ?? true,
+        inviteUsername: opts?.inviteUsername,
+      }),
+    }),
+
+  /** Invitaciones waiting dirigidas a mí (bandeja). */
+  getPendingInvites: (token: string) =>
+    request<{
+      invites: Array<{
+        invite_id: string
+        match_id: string
+        invite_code: string
+        from_username: string
+        from_uid: string
+        time_control_s?: number
+      }>
+    }>('/api/matches/invites/pending', { token }),
 
   joinMatch: (token: string, id: string) =>
     request<{ state: MatchState }>(`/api/matches/${id}/join`, { method: 'POST', token }),
+
+  joinMatchByCode: (token: string, code: string) =>
+    request<{
+      match: { id: string }
+      state: MatchState
+    }>('/api/matches/join-by-code', {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ code }),
+    }),
 
   enqueueMatch: (token: string, timeControlS = 300) =>
     request<{
@@ -153,6 +212,18 @@ export const api = {
 
   resignMatch: (token: string, id: string) =>
     request<{ state: MatchState }>(`/api/matches/${id}/resign`, { method: 'POST', token }),
+
+  /** Registra al usuario como espectador de la partida (idempotente). */
+  spectateMatch: (token: string, id: string) =>
+    request<{ state: MatchState }>(`/api/matches/${id}/spectate`, { method: 'POST', token }),
+
+  /** Emoji de espectador; Neon valida pertenencia + cooldown (8s). */
+  sendSpectatorEmoji: (token: string, id: string, emoji: string) =>
+    request<{ ok: boolean; emoji?: { id: string } }>(`/api/matches/${id}/spectator-emoji`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ emoji }),
+    }),
 
   /** Declara flag: el reloj en vivo llegó a 0 (server valida con clock_updated_at). */
   claimTimeout: (token: string, id: string) =>

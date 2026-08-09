@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "./styles/animaciones.css";
 
 @theme {
   /* Tipografías — Ivory Tactics */
@@ -126,44 +127,7 @@
   }
 }
 
-/* Destello de comodín en casillas del tablero (Aparición, etc.) */
-@keyframes rc-joker-swap {
-  0% {
-    background-color: rgba(212, 175, 55, 0.15);
-    box-shadow: inset 0 0 0 2px rgba(212, 175, 55, 0.35);
-  }
-  35% {
-    background-color: rgba(212, 175, 55, 0.72);
-    box-shadow:
-      inset 0 0 0 3px rgba(255, 224, 136, 0.95),
-      0 0 18px rgba(212, 175, 55, 0.45);
-  }
-  100% {
-    background-color: rgba(212, 175, 55, 0.2);
-    box-shadow: inset 0 0 0 2px rgba(212, 175, 55, 0.4);
-  }
-}
-
-@keyframes rc-joker-vanish {
-  0% {
-    background-color: rgba(186, 26, 26, 0.15);
-  }
-  40% {
-    background-color: rgba(186, 26, 26, 0.55);
-    box-shadow: inset 0 0 0 2px rgba(186, 26, 26, 0.8);
-  }
-  100% {
-    background-color: rgba(186, 26, 26, 0.12);
-  }
-}
-
-.rc-fx-swap {
-  animation: rc-joker-swap 0.55s ease-out both;
-}
-
-.rc-fx-vanish {
-  animation: rc-joker-vanish 0.45s ease-out both;
-}
+/* Destello de comodín: keyframes viven en styles/animaciones.css (no duplicar aquí). */
 
 /* Indicadores de movimiento / apuntado de comodines (casilla completa, suaves) */
 @keyframes rc-move-blink {
@@ -187,6 +151,18 @@
   50% {
     background-color: rgba(186, 26, 26, 0.28);
     box-shadow: inset 0 0 0 2px rgba(186, 26, 26, 0.45);
+  }
+}
+
+@keyframes rc-blood-capture-blink {
+  0%,
+  100% {
+    background-color: rgba(255, 196, 64, 0.28);
+    box-shadow: inset 0 0 0 2px rgba(255, 210, 90, 0.65);
+  }
+  50% {
+    background-color: rgba(255, 210, 90, 0.55);
+    box-shadow: inset 0 0 0 3px rgba(255, 230, 140, 0.95);
   }
 }
 
@@ -236,4 +212,552 @@
     background-color: rgba(90, 40, 120, 0.2);
     box-shadow: inset 0 0 0 2px rgba(120, 70, 160, 0.4);
   }
+}
+
+/* --- Entorno full-bleed + atmósfera Canvas --- */
+.rc-dim-env {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 0;
+}
+
+.rc-dim-env--persistent {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+}
+
+/* Fallback sólido antes del primer frame del canvas */
+.rc-dim-env--primo { background: #ebe6d8; }
+.rc-dim-env--cadena_sangre { background: #14080c; }
+.rc-dim-env--gravitacional { background: #050403; }
+.rc-dim-env--ruina { background: #14110f; }
+.rc-dim-env--fragilidad { background: #0a1016; }
+.rc-dim-env--espejo { background: #0c1828; }
+.rc-dim-env--mercado_negro { background: #0a0804; }
+.rc-dim-env--bluriel { background: #120e18; }
+
+.rc-dim-atmosphere {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* UI legible sobre fondos oscuros de dimensión */
+.rc-match-dim {
+  color: var(--color-ink);
+  background: transparent;
+}
+
+/* Texto claro en dims oscuras */
+.rc-match-dim:not(.rc-match-dim--primo) {
+  --rc-dim-fg: #f2efe8;
+  --rc-dim-muted: rgba(242, 239, 232, 0.72);
+  --rc-dim-accent: #e9c349;
+}
+
+.rc-match-dim:not(.rc-match-dim--primo) .text-\[var\(--color-ink\)\],
+.rc-match-dim:not(.rc-match-dim--primo) .font-display {
+  color: var(--rc-dim-fg);
+}
+
+.rc-match-dim:not(.rc-match-dim--primo) .text-\[var\(--color-ink-muted\)\],
+.rc-match-dim:not(.rc-match-dim--primo) .font-label {
+  color: var(--rc-dim-muted);
+}
+
+.rc-match-dim:not(.rc-match-dim--primo) .text-\[var\(--color-primary\)\] {
+  color: var(--rc-dim-accent);
+}
+
+.rc-match-dim--cadena_sangre { --rc-dim-accent: #d08088; }
+.rc-match-dim--espejo { --rc-dim-accent: #9ec8ef; }
+.rc-match-dim--fragilidad { --rc-dim-accent: #9ed4df; }
+.rc-match-dim--ruina { --rc-dim-accent: #c8b89a; }
+.rc-match-dim--gravitacional { --rc-dim-accent: #e0c070; }
+.rc-match-dim--mercado_negro { --rc-dim-accent: #e9c349; }
+.rc-match-dim--bluriel { --rc-dim-accent: #b8a0d8; }
+
+.rc-board-stage {
+  position: relative;
+  z-index: 1;
+  isolation: isolate;
+}
+
+.rc-board-stage--cadena_sangre {
+  filter: drop-shadow(0 0 22px rgba(140, 20, 30, 0.4));
+}
+
+.rc-board-stage--gravitacional {
+  filter: drop-shadow(0 0 28px rgba(0, 0, 0, 0.65));
+}
+
+.rc-board-stage--mercado_negro {
+  filter: drop-shadow(0 0 20px rgba(212, 175, 55, 0.28));
+}
+
+.rc-board-stage--espejo {
+  filter: drop-shadow(0 0 18px rgba(80, 140, 200, 0.32));
+}
+
+.rc-board-stage--fragilidad {
+  filter: drop-shadow(0 0 16px rgba(120, 190, 210, 0.28));
+}
+
+.rc-board-stage--ruina {
+  filter: drop-shadow(0 0 16px rgba(40, 30, 20, 0.45));
+}
+
+/* Reveal full-bleed */
+.rc-dim-reveal {
+  position: fixed;
+  inset: 0;
+  z-index: 130;
+  cursor: pointer;
+  overflow: hidden;
+  background: #000;
+}
+
+.rc-dim-reveal--primo {
+  background: #ebe6d8;
+}
+
+.rc-dim-vignette {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: radial-gradient(ellipse 58% 52% at 50% 42%, transparent 25%, rgba(0, 0, 0, 0.5) 100%);
+}
+
+.rc-dim-vignette--primo {
+  background: radial-gradient(
+    ellipse 62% 58% at 50% 44%,
+    transparent 40%,
+    rgba(90, 70, 35, 0.16) 100%
+  );
+}
+
+.rc-dim-card-slot {
+  position: absolute;
+  z-index: 4;
+  left: 50%;
+  top: 56%;
+  width: min(420px, calc(100vw - 2.5rem));
+  margin-left: calc(min(420px, calc(100vw - 2.5rem)) / -2);
+  pointer-events: none;
+}
+
+.rc-dim-card-slot--cadena_sangre {
+  left: max(1.5rem, 8vw);
+  top: 42%;
+  margin-left: 0;
+}
+
+.rc-dim-card-slot--gravitacional {
+  left: 50%;
+  top: 66%;
+  margin-left: calc(min(420px, calc(100vw - 2.5rem)) / -2);
+}
+
+.rc-dim-card-slot--ruina {
+  left: max(1.25rem, 6vw);
+  top: 14%;
+  margin-left: 0;
+}
+
+.rc-dim-card-slot--fragilidad {
+  left: auto;
+  right: max(1.25rem, 7vw);
+  top: 42%;
+  margin-left: 0;
+  width: min(400px, calc(100vw - 2.5rem));
+}
+
+.rc-dim-card {
+  width: 100%;
+  padding: 1.35rem 1.5rem 1.4rem;
+  color: #f2efe8;
+  text-align: left;
+  background: color-mix(in srgb, #0e0c0a 74%, transparent);
+  border: 1px solid rgba(220, 210, 190, 0.2);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(12px);
+}
+
+.rc-dim-card-eyebrow {
+  margin: 0;
+  font-family: var(--font-label);
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: rgba(233, 195, 73, 0.9);
+}
+
+.rc-dim-card-title {
+  margin: 0.55rem 0 0;
+  font-family: var(--font-display);
+  font-size: clamp(1.7rem, 4.2vw, 2.25rem);
+  line-height: 1.12;
+  color: #f7f3ea;
+}
+
+.rc-dim-card-blurb {
+  margin: 0.75rem 0 0;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: rgba(230, 225, 215, 0.8);
+}
+
+/* Primo: pergamino claro (después de .rc-dim-card para no perder el fondo) */
+.rc-dim-card-slot--primo {
+  top: 48%;
+}
+
+.rc-dim-card--primo {
+  background: #f7f3ea;
+  border: 1px solid rgba(180, 150, 60, 0.4);
+  box-shadow:
+    0 18px 48px rgba(80, 60, 20, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.65);
+  color: #2a2418;
+  backdrop-filter: none;
+  text-align: center;
+  padding: 1.5rem 1.65rem 1.55rem;
+}
+
+.rc-dim-card--primo .rc-dim-card-eyebrow {
+  color: rgba(140, 110, 30, 0.95);
+}
+
+.rc-dim-card--primo .rc-dim-card-title {
+  color: #1a1610;
+  text-shadow: none;
+}
+
+.rc-dim-card--primo .rc-dim-card-blurb {
+  color: rgba(55, 45, 30, 0.78);
+  max-width: 28ch;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.rc-dim-card--gravitacional {
+  text-align: center;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  backdrop-filter: none;
+  padding-top: 1.1rem;
+  padding-bottom: 1.1rem;
+  border-top: 1px solid rgba(212, 175, 55, 0.45);
+  border-bottom: 1px solid rgba(212, 175, 55, 0.45);
+}
+
+.rc-dim-card--gravitacional .rc-dim-card-eyebrow {
+  color: rgba(232, 200, 110, 0.95);
+}
+
+.rc-dim-card--ruina {
+  transform: rotate(-2deg);
+  background: color-mix(in srgb, #1a1612 78%, transparent);
+  border-color: rgba(180, 170, 150, 0.22);
+}
+
+.rc-dim-card--fragilidad {
+  background: color-mix(in srgb, #0c1218 78%, transparent);
+  border-color: rgba(150, 210, 220, 0.3);
+  clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 0 100%);
+}
+
+.rc-dim-card--fragilidad .rc-dim-card-eyebrow {
+  color: #9ed4df;
+}
+
+/* Espejo: card estándar (sin texto reflejado) */
+.rc-dim-card--espejo {
+  background: color-mix(in srgb, #0c1828 72%, transparent);
+  border-color: rgba(140, 190, 230, 0.35);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
+}
+
+.rc-dim-card--espejo .rc-dim-card-eyebrow {
+  color: rgba(160, 210, 255, 0.9);
+}
+
+.rc-dim-card--espejo .rc-dim-card-title {
+  color: #f4f8fc;
+  text-shadow: 0 0 28px rgba(120, 180, 230, 0.35);
+}
+
+.rc-dim-card--espejo .rc-dim-card-blurb {
+  color: rgba(210, 225, 240, 0.78);
+}
+
+/* Sangre — terciopelo borgoña elegante */
+.rc-dim-reveal--cadena_sangre {
+  background: #14080c;
+}
+
+.rc-dim-card--cadena_sangre {
+  background: color-mix(in srgb, #1a0c10 70%, transparent);
+  border-color: rgba(180, 90, 100, 0.28);
+  border-left: 1px solid rgba(212, 160, 150, 0.45);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
+}
+
+.rc-dim-card--cadena_sangre .rc-dim-card-eyebrow {
+  color: #d08088;
+  letter-spacing: 0.28em;
+}
+
+.rc-dim-card--cadena_sangre .rc-dim-card-title {
+  color: #f7ecee;
+  font-weight: 500;
+}
+
+.rc-dim-card--cadena_sangre .rc-dim-card-blurb {
+  color: rgba(230, 210, 214, 0.78);
+}
+
+/* Mercado — gran reloj de arena difuminado detrás */
+.rc-dim-card-slot--mercado_negro {
+  position: relative;
+}
+
+.rc-dim-mercado-hourglass {
+  position: absolute;
+  left: 50%;
+  top: 42%;
+  width: min(420px, 70vw);
+  height: min(520px, 80vh);
+  transform: translate(-50%, -50%);
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.22;
+  filter: blur(14px);
+  background: no-repeat center / contain;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 80 120' fill='none'%3E%3Cpath d='M14 8h52v12L46 60l20 40v12H14V100l20-40L14 20V8z' stroke='%23d4af37' stroke-width='3' fill='%231a1408' fill-opacity='0.5'/%3E%3Cpath d='M22 22h36L40 52 22 22z' fill='%23e8c86e' fill-opacity='0.85'/%3E%3Cpath d='M26 88h28l-14 16-14-16z' fill='%23d4af37' fill-opacity='0.75'/%3E%3C/svg%3E");
+}
+
+.rc-dim-card--mercado_negro {
+  position: relative;
+  z-index: 1;
+  border-color: rgba(212, 175, 55, 0.45);
+  text-align: center;
+  background: color-mix(in srgb, #0c0a06 55%, transparent);
+}
+
+.rc-dim-card--mercado_negro .rc-dim-card-blurb {
+  color: rgba(232, 210, 140, 0.85);
+}
+
+/* Bluriel — pieza ultra difuminada encima de la card */
+.rc-dim-card-slot--bluriel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.rc-dim-bluriel-piece {
+  position: absolute;
+  top: -4.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: clamp(5rem, 18vw, 8.5rem);
+  line-height: 1;
+  color: rgba(200, 180, 240, 0.55);
+  filter: blur(14px);
+  opacity: 0.7;
+  pointer-events: none;
+  user-select: none;
+  z-index: 0;
+}
+
+.rc-dim-card--bluriel {
+  position: relative;
+  z-index: 1;
+  border-color: rgba(160, 140, 200, 0.35);
+  text-align: center;
+  background: color-mix(in srgb, #120e18 72%, transparent);
+}
+
+/* Ruina — escombros decorativos en reveal */
+.rc-dim-card-slot--ruina {
+  position: relative;
+}
+
+.rc-dim-ruina-debris {
+  position: absolute;
+  inset: -18% -12%;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.rc-dim-ruina-debris span {
+  position: absolute;
+  background: #3a342c;
+  opacity: 0.55;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+}
+
+.rc-dim-ruina-debris span:nth-child(1) {
+  width: 42px;
+  height: 18px;
+  left: 6%;
+  top: 72%;
+  transform: rotate(-18deg);
+}
+
+.rc-dim-ruina-debris span:nth-child(2) {
+  width: 28px;
+  height: 14px;
+  right: 10%;
+  top: 18%;
+  transform: rotate(22deg);
+  background: #524c42;
+}
+
+.rc-dim-ruina-debris span:nth-child(3) {
+  width: 36px;
+  height: 12px;
+  right: 18%;
+  bottom: 8%;
+  transform: rotate(-8deg);
+}
+
+.rc-dim-ruina-debris span:nth-child(4) {
+  width: 20px;
+  height: 20px;
+  left: 14%;
+  top: 12%;
+  transform: rotate(35deg);
+  background: #2a2620;
+  clip-path: polygon(20% 0, 100% 30%, 70% 100%, 0 60%);
+}
+
+.rc-dim-card--ruina {
+  position: relative;
+  z-index: 1;
+}
+
+@media (max-width: 640px) {
+  .rc-dim-card-slot--cadena_sangre,
+  .rc-dim-card-slot--ruina,
+  .rc-dim-card-slot--fragilidad {
+    left: 50%;
+    right: auto;
+    top: 56%;
+    margin-left: calc(min(420px, calc(100vw - 2.5rem)) / -2);
+    width: min(420px, calc(100vw - 2.5rem));
+  }
+  .rc-dim-card--cadena_sangre,
+  .rc-dim-card--ruina {
+    transform: none;
+  }
+  .rc-dim-card--fragilidad {
+    clip-path: none;
+  }
+  .rc-dim-bluriel-piece {
+    top: -3.2rem;
+    filter: blur(12px);
+  }
+}
+
+/* Reloj de arena (Mercado Negro) */
+.rc-hourglass {
+  position: relative;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.rc-hourglass-glass {
+  position: absolute;
+  inset: 0;
+  border: 1.5px solid rgba(212, 175, 55, 0.65);
+  clip-path: polygon(8% 0, 92% 0, 56% 48%, 92% 100%, 8% 100%, 44% 52%);
+  background: rgba(20, 16, 8, 0.35);
+  overflow: hidden;
+}
+
+.rc-hourglass-sand {
+  position: absolute;
+  left: 12%;
+  right: 12%;
+  background: linear-gradient(180deg, #e8c86e, #d4af37);
+}
+
+.rc-hourglass-sand--top {
+  top: 8%;
+  transition: height 0.35s linear;
+}
+
+.rc-hourglass-sand--bot {
+  bottom: 8%;
+  transition: height 0.35s linear;
+}
+
+.rc-hourglass-neck {
+  position: absolute;
+  left: 46%;
+  top: 46%;
+  width: 8%;
+  height: 8%;
+  background: rgba(212, 175, 55, 0.35);
+}
+
+.rc-hourglass-drip {
+  position: absolute;
+  left: 50%;
+  top: 48%;
+  width: 2px;
+  height: 10px;
+  margin-left: -1px;
+  background: rgba(255, 224, 140, 0.85);
+  animation: rc-hourglass-drip 0.7s ease-in infinite;
+}
+
+@keyframes rc-hourglass-drip {
+  0% {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  40% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+.rc-hourglass--active .rc-hourglass-glass {
+  border-color: rgba(255, 220, 120, 0.9);
+  box-shadow: 0 0 10px rgba(212, 175, 55, 0.35);
+}
+
+/* Tienda teñida por dimensión */
+.rc-shop--cadena_sangre {
+  --rc-shop-accent: #e07070;
+}
+.rc-shop--espejo {
+  --rc-shop-accent: #9ec8ef;
+}
+.rc-shop--fragilidad {
+  --rc-shop-accent: #9ed4df;
+}
+.rc-shop--gravitacional {
+  --rc-shop-accent: #e0c070;
+}
+.rc-shop--ruina {
+  --rc-shop-accent: #c8b89a;
+}
+.rc-shop--mercado_negro {
+  --rc-shop-accent: #e9c349;
+}
+.rc-shop--bluriel {
+  --rc-shop-accent: #b8a0d8;
 }

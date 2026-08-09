@@ -45,7 +45,7 @@ function PortalLiveChromeInner() {
     <>
       {typeof lobby.onlineCount === 'number' ? (
         <p className="pointer-events-none fixed bottom-3 left-3 z-40 font-label text-[10px] uppercase tracking-wider text-[var(--color-ink-muted)]">
-          Lobby Portal · {lobby.onlineCount}
+          Lobby · {lobby.onlineCount}
           {searching > 0 ? ` · ${searching} buscando` : ''}
           {lobby.ready ? '' : ' · …'}
         </p>

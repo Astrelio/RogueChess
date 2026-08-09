@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { JokerCard } from '@/components/jokers/JokerCard'
+import { isDarkDimension, normalizeDimensionId } from '@/lib/dimensions'
 import { easeOut, riseItem, stagger } from '@/lib/motion'
 import { cn } from '@/lib/utils'
 import type { MatchInventoryItem, ShopOffer } from '@/types/match'
@@ -28,6 +29,8 @@ type Props = {
   busy?: boolean
   justBoughtOfferId?: string | null
   justBoughtInventoryId?: string | null
+  /** Dimensión actual (tiñe la tienda). */
+  dimensionId?: string | null
   onBuy: (offerId: string) => void
   onSell: (inventoryId: string) => void
   onContinue: () => void
@@ -48,6 +51,7 @@ export function ShopPhaseModal({
   busy,
   justBoughtOfferId,
   justBoughtInventoryId,
+  dimensionId,
   onBuy,
   onSell,
   onContinue,
@@ -58,6 +62,8 @@ export function ShopPhaseModal({
   const [draggingOfferId, setDraggingOfferId] = useState<string | null>(null)
   const [dropHover, setDropHover] = useState(false)
   const urgent = shopLeftMs > 0 && shopLeftMs <= 15000
+  const dim = normalizeDimensionId(dimensionId)
+  const darkShop = isDarkDimension(dim) || dim === 'cadena_sangre'
 
   useEffect(() => {
     if (!open) return
@@ -128,7 +134,12 @@ export function ShopPhaseModal({
         >
           <motion.div
             aria-hidden
-            className="absolute inset-0 bg-[color-mix(in_srgb,var(--color-ink)_42%,transparent)] backdrop-blur-[10px]"
+            className={cn(
+              'absolute inset-0 backdrop-blur-[10px]',
+              darkShop
+                ? 'bg-[color-mix(in_srgb,#050403_72%,transparent)]'
+                : 'bg-[color-mix(in_srgb,var(--color-ink)_42%,transparent)]',
+            )}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -138,7 +149,13 @@ export function ShopPhaseModal({
             role="dialog"
             aria-modal="true"
             aria-labelledby="shop-title"
-            className="relative z-10 flex h-[min(100dvh,820px)] w-full max-w-5xl flex-col overflow-hidden border border-[var(--color-outline-soft)]/50 bg-[color-mix(in_srgb,var(--color-surface)_94%,#fff)] shadow-[0_28px_80px_rgba(27,28,25,0.28)] sm:h-[min(92dvh,780px)] sm:rounded-md"
+            className={cn(
+              'rc-shop relative z-10 flex h-[min(100dvh,820px)] w-full max-w-5xl flex-col overflow-hidden border sm:h-[min(92dvh,780px)] sm:rounded-md',
+              `rc-shop--${dim}`,
+              darkShop
+                ? 'border-white/10 bg-[color-mix(in_srgb,#14110e_94%,transparent)] text-[#f2efe8] shadow-[0_28px_80px_rgba(0,0,0,0.55)]'
+                : 'border-[var(--color-outline-soft)]/50 bg-[color-mix(in_srgb,var(--color-surface)_94%,#fff)] shadow-[0_28px_80px_rgba(27,28,25,0.28)]',
+            )}
             initial={{ opacity: 0, y: 36, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.98 }}
@@ -155,16 +172,32 @@ export function ShopPhaseModal({
               />
               <div className="relative flex flex-wrap items-end justify-between gap-3">
                 <div>
-                  <p className="font-label text-[10px] uppercase tracking-[0.22em] text-[var(--color-primary)]">
+                  <p
+                    className={cn(
+                      'font-label text-[10px] uppercase tracking-[0.22em]',
+                      darkShop ? 'text-[var(--rc-shop-accent,#e9c349)]' : 'text-[var(--color-primary)]',
+                    )}
+                  >
                     Fase de mercado · ciclo {cycleIndex}
                   </p>
-                  <h2 id="shop-title" className="font-display mt-0.5 text-2xl text-[var(--color-primary)] sm:text-3xl">
+                  <h2
+                    id="shop-title"
+                    className={cn(
+                      'font-display mt-0.5 text-2xl sm:text-3xl',
+                      darkShop ? 'text-[#f7f3ea]' : 'text-[var(--color-primary)]',
+                    )}
+                  >
                     Mercado de comodines
                   </h2>
                 </div>
                 <div className="flex gap-5 text-right">
                   <div>
-                    <p className="font-label text-[10px] uppercase tracking-[0.16em] text-[var(--color-ink-muted)]">
+                    <p
+                      className={cn(
+                        'font-label text-[10px] uppercase tracking-[0.16em]',
+                        darkShop ? 'text-white/55' : 'text-[var(--color-ink-muted)]',
+                      )}
+                    >
                       Cierra en
                     </p>
                     <motion.p
@@ -172,29 +205,46 @@ export function ShopPhaseModal({
                       initial={{ scale: 1.06 }}
                       animate={{ scale: 1 }}
                       className={`font-display text-2xl tabular-nums sm:text-3xl ${
-                        urgent ? 'text-[var(--color-error)]' : 'text-[var(--color-primary)]'
+                        urgent
+                          ? 'text-[var(--color-error)]'
+                          : darkShop
+                            ? 'text-[var(--rc-shop-accent,#e9c349)]'
+                            : 'text-[var(--color-primary)]'
                       }`}
                     >
                       {formatMs(shopLeftMs)}
                     </motion.p>
                   </div>
                   <div>
-                    <p className="font-label text-[10px] uppercase tracking-[0.16em] text-[var(--color-ink-muted)]">
+                    <p
+                      className={cn(
+                        'font-label text-[10px] uppercase tracking-[0.16em]',
+                        darkShop ? 'text-white/55' : 'text-[var(--color-ink-muted)]',
+                      )}
+                    >
                       Tu reloj
                     </p>
                     <motion.p
                       key={timeMs}
-                      initial={{ scale: 1.08, color: 'var(--color-primary)' }}
-                      animate={{ scale: 1, color: 'var(--color-ink)' }}
+                      initial={{ scale: 1.08 }}
+                      animate={{ scale: 1 }}
                       transition={{ duration: 0.45, ease: easeOut }}
-                      className="font-display text-2xl tabular-nums sm:text-3xl"
+                      className={cn(
+                        'font-display text-2xl tabular-nums sm:text-3xl',
+                        darkShop ? 'text-[#f2efe8]' : 'text-[var(--color-ink)]',
+                      )}
                     >
                       {formatMs(timeMs)}
                     </motion.p>
                   </div>
                 </div>
               </div>
-              <div className="relative mt-3 h-1 overflow-hidden rounded-full bg-[var(--color-surface-high)]">
+              <div
+                className={cn(
+                  'relative mt-3 h-1 overflow-hidden rounded-full',
+                  darkShop ? 'bg-white/10' : 'bg-[var(--color-surface-high)]',
+                )}
+              >
                 <motion.div
                   className={`h-full rounded-full ${urgent ? 'bg-[var(--color-error)]' : 'bg-[var(--color-primary-container)]'}`}
                   animate={{ width: `${Math.max(2, Math.min(100, (shopLeftMs / 60000) * 100))}%` }}
@@ -266,6 +316,7 @@ export function ShopPhaseModal({
                             selected={selectedOfferId === offer.id}
                             draggable={affordable && !busy}
                             tooltipSide="below"
+                            darkTooltip={darkShop}
                             onClick={() => {
                               if (locked) return
                               pickOffer(offer.id)
@@ -292,7 +343,12 @@ export function ShopPhaseModal({
                                 className="flex w-full flex-col items-center overflow-hidden"
                               >
                                 <div className="mt-1.5 w-full space-y-1">
-                                  <p className="truncate text-center font-display text-xs text-[var(--color-ink)]">
+                                  <p
+                                    className={cn(
+                                      'truncate text-center font-display text-xs',
+                                      darkShop ? 'text-[#f2efe8]' : 'text-[var(--color-ink)]',
+                                    )}
+                                  >
                                     {offer.joker.name}
                                   </p>
                                   <button
@@ -358,6 +414,7 @@ export function ShopPhaseModal({
                             disabled={busy}
                             selected={selectedInvId === item.id}
                             tooltipSide="below"
+                            darkTooltip={darkShop}
                             onClick={() => {
                               if (busy) return
                               pickInv(item.id)
@@ -373,7 +430,12 @@ export function ShopPhaseModal({
                                 className="flex w-full flex-col items-center overflow-hidden"
                               >
                                 <div className="mt-1.5 w-full space-y-1">
-                                  <p className="truncate text-center font-display text-xs text-[var(--color-ink)]">
+                                  <p
+                                    className={cn(
+                                      'truncate text-center font-display text-xs',
+                                      darkShop ? 'text-[#f2efe8]' : 'text-[var(--color-ink)]',
+                                    )}
+                                  >
                                     {item.joker.name}
                                   </p>
                                   <button
@@ -426,9 +488,21 @@ export function ShopPhaseModal({
               </section>
             </div>
 
-            <footer className="shrink-0 border-t hairline bg-[color-mix(in_srgb,var(--color-surface-low)_80%,transparent)] px-4 py-3 sm:px-6">
+            <footer
+              className={cn(
+                'shrink-0 border-t hairline px-4 py-3 sm:px-6',
+                darkShop
+                  ? 'border-white/10 bg-black/25'
+                  : 'bg-[color-mix(in_srgb,var(--color-surface-low)_80%,transparent)]',
+              )}
+            >
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-xs text-[var(--color-ink-muted)] sm:text-sm">
+                <p
+                  className={cn(
+                    'text-xs sm:text-sm',
+                    darkShop ? 'text-white/60' : 'text-[var(--color-ink-muted)]',
+                  )}
+                >
                   Al cerrar esperas al rival; luego se revela la dimensión.
                 </p>
                 <button
@@ -512,7 +586,7 @@ export function ShopWaitOverlay({ open, peek, shopLeftMs, rivalShopping, onPeek,
           </h2>
           <p className="mt-3 text-sm text-[var(--color-ink-muted)]">
             Ya marcaste listo. Cuando el otro cierre la tienda (o acabe el minuto) se abre la grieta.
-            {rivalShopping ? ' El rival sigue eligiendo comodines (Portal activity).' : ''}
+            {rivalShopping ? ' El rival sigue eligiendo comodines.' : ''}
           </p>
           <p className="font-display mt-6 text-4xl tabular-nums text-[var(--color-ink)]">
             {formatMs(shopLeftMs)}

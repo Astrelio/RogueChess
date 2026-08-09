@@ -4,7 +4,7 @@ import { useAuth } from '@/auth/AuthContext'
 import { useLobbyPresence } from '@/hooks/useLobbyPresence'
 import { api } from '@/lib/api'
 
-/** Crea partida waiting + envía reto Portal al firebase uid del rival. */
+/** Crea partida custom + invita (Portal lobby + fila Neon para bandeja). */
 export function useChallengePlayer() {
   const { getToken, user } = useAuth()
   const lobby = useLobbyPresence()
@@ -25,17 +25,30 @@ export function useChallengePlayer() {
         navigate('/login')
         return
       }
-      const { profile } = await api.getProfile(username)
+      const clean = username.replace(/^@/, '')
+      const { profile } = await api.getProfile(clean)
       if (profile.firebase_uid === user.uid) {
         setError('No puedes retarte a ti mismo')
         return
       }
-      const { match } = await api.createChallengeMatch(token)
-      await lobby.challenge(profile.firebase_uid, {
-        matchId: match.id,
-        message: '¿Partida rápida en RogueChess?',
+      const { match } = await api.createChallengeMatch(token, {
+        timeControlS: 300,
+        allowSpectators: true,
+        mode: 'custom',
+        inviteUsername: clean,
       })
-      navigate(`/partida/${match.id}`)
+      try {
+        await lobby.challenge(profile.firebase_uid, {
+          matchId: match.id,
+          toUsername: clean,
+          message: '¿Partida personalizada en RogueChess?',
+        })
+      } catch (inviteErr) {
+        console.warn('No se pudo enviar invite Portal', inviteErr)
+      }
+      navigate(`/partida/${match.id}`, {
+        state: { invitedUsername: clean, inviteSent: true },
+      })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo enviar el reto')
     } finally {

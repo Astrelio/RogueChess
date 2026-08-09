@@ -7,12 +7,13 @@ type Props = {
   mode: JokerTargetMode
   selected: string[]
   onCancel: () => void
+  dark?: boolean
 }
 
 /**
  * Notificación flotante mientras se eligen casillas para un comodín.
  */
-export function JokerTargetBanner({ open, jokerName, mode, selected, onCancel }: Props) {
+export function JokerTargetBanner({ open, jokerName, mode, selected, onCancel, dark }: Props) {
   const slot = mode.slots[Math.min(selected.length, Math.max(mode.slots.length - 1, 0))]
   if (!open || !slot) return null
 
@@ -25,6 +26,7 @@ export function JokerTargetBanner({ open, jokerName, mode, selected, onCancel }:
       message={slot.hint}
       detail={detailParts.join(' · ')}
       tone="aim"
+      dark={dark}
       onDismiss={onCancel}
       actionLabel="Cancelar · Esc"
     />

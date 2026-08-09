@@ -89,6 +89,10 @@ export type MatchRow = {
   /** Inicio / fin del minuto de tienda (ISO). */
   shop_opened_at?: string | null
   shop_ends_at?: string | null
+  /** Solo mode=custom (sala personalizada). */
+  invite_code?: string | null
+  allow_spectators?: boolean
+  is_rated?: boolean
 }
 
 export type BoardCell = {
@@ -115,6 +119,28 @@ export type PieceFlag = {
   payload?: Record<string, unknown>
 }
 
+export type MatchSpectator = {
+  id: string
+  match_id: string
+  profile_id: string
+  is_active: boolean
+  joined_at: string
+  left_at: string | null
+  username?: string
+  display_name?: string
+}
+
+export type RecentSpectatorEmoji = {
+  id: string
+  emoji: string
+  created_at: string
+  username?: string
+  /** firebase_uid del emisor (para descartar los propios). */
+  from_uid: string
+  /** Lado del tablero (si la API lo envía; si no, Portal lo trae). */
+  target_color?: 'white' | 'black' | string | null
+}
+
 export type MatchState = {
   match: MatchRow
   players: MatchPlayer[]
@@ -122,9 +148,11 @@ export type MatchState = {
   effects: unknown[]
   inventory: MatchInventoryItem[]
   shop: ShopOffer[]
-  spectators: unknown[]
+  spectators: MatchSpectator[]
   dimension_history: unknown[]
   /** Marcadores de piezas (capa, multijugos, ex-peón…). */
   flags?: PieceFlag[]
   you?: MatchPlayer | null
+  /** Reacciones recientes (respaldo por polling si Portal no entrega). */
+  recent_emojis?: RecentSpectatorEmoji[]
 }

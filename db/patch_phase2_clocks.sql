@@ -66,13 +66,38 @@ END;
 $$;
 
 -- Tras grieta: reanudar reloj del bando que tiene el turno
+-- Mazo sin repetición (misma lógica que patch_dimension_no_repeat.sql)
 CREATE OR REPLACE FUNCTION fn_reveal_dimension(p_match_id UUID)
 RETURNS matches LANGUAGE plpgsql AS $$
-DECLARE v_match matches; v_dim dimension_code; v_cycle INT;
+DECLARE
+  v_match matches;
+  v_dim dimension_code;
+  v_cycle INT;
+  v_used dimension_code[];
 BEGIN
   SELECT * INTO v_match FROM matches WHERE id = p_match_id FOR UPDATE;
   v_cycle := v_match.cycle_index + 1;
-  v_dim := fn_pick_random_dimension();
+
+  SELECT COALESCE(array_agg(DISTINCT d), '{}'::dimension_code[])
+  INTO v_used
+  FROM (
+    SELECT h.dimension AS d
+    FROM match_dimension_history h
+    WHERE h.match_id = p_match_id
+      AND h.dimension <> 'primo'
+    UNION
+    SELECT v_match.current_dimension
+    WHERE v_match.current_dimension IS NOT NULL
+      AND v_match.current_dimension <> 'primo'
+  ) x;
+
+  v_dim := fn_pick_random_dimension(NULL, v_used);
+  IF v_dim IS NULL THEN
+    v_dim := fn_pick_random_dimension(v_match.current_dimension, NULL);
+  END IF;
+  IF v_dim IS NULL THEN
+    v_dim := fn_pick_random_dimension(NULL, NULL);
+  END IF;
 
   UPDATE match_board_cells SET is_active = FALSE WHERE match_id = p_match_id AND is_active;
 
@@ -108,7 +133,11 @@ BEGIN
       ORDER BY random()
       LIMIT 4
     ) s
-    ON CONFLICT DO NOTHING;
+    ON CONFLICT (match_id, square, effect) DO UPDATE SET
+      is_active = TRUE,
+      time_bonus_min_s = EXCLUDED.time_bonus_min_s,
+      time_bonus_max_s = EXCLUDED.time_bonus_max_s,
+      created_cycle = EXCLUDED.created_cycle;
   END IF;
 
   UPDATE matches SET

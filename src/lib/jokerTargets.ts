@@ -39,8 +39,8 @@ const MODES: Record<string, JokerTargetMode> = {
     code: 'imperius',
     instant: false,
     slots: [
-      { key: 'from', label: 'Pieza enemiga', hint: 'Elige la pieza enemiga a controlar (no el rey)' },
-      { key: 'to', label: 'Destino', hint: 'Elige a dónde la mueves (fuego amigo permitido)' },
+      { key: 'from', label: 'Pieza enemiga', hint: 'Elige la pieza enemiga a mover ahora (no el rey)' },
+      { key: 'to', label: 'Destino', hint: 'A dónde la mueves (puede capturar a las suyas)' },
     ],
   },
   avada_kedavra: {
@@ -50,7 +50,7 @@ const MODES: Record<string, JokerTargetMode> = {
       {
         key: 'square',
         label: 'Víctima',
-        hint: 'Peón enemigo o pieza que fue peón (coronada / multijugos)',
+        hint: 'Peón enemigo o pieza que fue peón (coronada o Multijugos)',
       },
     ],
   },
@@ -61,29 +61,37 @@ const MODES: Record<string, JokerTargetMode> = {
       {
         key: 'square',
         label: 'Objetivo',
-        hint: 'Pieza enemiga adyacente a una tuya (no el rey)',
+        hint: 'Pieza enemiga junto a una tuya (no el rey)',
       },
     ],
   },
   bombarda: {
     code: 'bombarda',
     instant: false,
-    slots: [{ key: 'square', label: 'Peón', hint: 'Sacrifica uno de tus peones — explota 3×3' }],
+    slots: [{ key: 'square', label: 'Peón', hint: 'Sacrifica un peón tuyo: quema un área 3×3' }],
   },
   defodio: {
     code: 'defodio',
     instant: false,
-    slots: [{ key: 'square', label: 'Trampa', hint: 'Casilla vacía para la trampa (1 turno)' }],
+    slots: [
+      { key: 'square', label: 'Trampa', hint: 'Casilla vacía: quien caiga muere (salvo el rey)' },
+    ],
   },
   capa_invisibilidad: {
     code: 'capa_invisibilidad',
     instant: false,
-    slots: [{ key: 'square', label: 'Pieza', hint: 'Una pieza tuya se vuelve invisible' }],
+    slots: [{ key: 'square', label: 'Pieza', hint: 'Invisible hasta que capture o la capturen' }],
   },
   pocion_multijugos: {
     code: 'pocion_multijugos',
     instant: false,
-    slots: [{ key: 'square', label: 'Peón', hint: 'Un peón tuyo actúa como dama 1 turno' }],
+    slots: [
+      {
+        key: 'square',
+        label: 'Peón',
+        hint: 'Peón tuyo → dama por una jugada; luego se desvanece',
+      },
+    ],
   },
 }
 

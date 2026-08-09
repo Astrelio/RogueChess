@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
+import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { AnimatePresence, motion } from 'framer-motion'
 import { Chess } from 'chess.js'
 import { Chessboard } from 'react-chessboard'
 import { useAuth } from '@/auth/AuthContext'
@@ -15,21 +16,31 @@ import {
 } from '@/lib/jokerTargets'
 import { JokerCard } from '@/components/jokers/JokerCard'
 import { JokerTargetBanner } from '@/components/match/JokerTargetBanner'
-import { InstantJokerFx } from '@/components/match/InstantJokerFx'
+import { DimensionEnv } from '@/components/match/DimensionEnv'
+import { DimensionReveal } from '@/components/match/DimensionReveal'
+import { MatchMascotCoach } from '@/components/match/MatchMascotCoach'
+import { JokerClockFx, type ClockFxEvent } from '@/components/match/JokerClockFx'
+import { JokerFxOverlay } from '@/components/match/JokerFxOverlay'
 import { MatchToast } from '@/components/match/MatchToast'
 import { MatchPortalBridge, type MatchPortalPeerInfo } from '@/components/match/MatchPortalBridge'
 import { ShopIntroOverlay } from '@/components/match/ShopIntroOverlay'
 import { ShopPhaseModal, ShopWaitOverlay } from '@/components/match/ShopPhaseModal'
+import { SpectatorReactionColumns, type ReactionEvent } from '@/components/match/SpectatorReactions'
+import { PixelEmoji } from '@/components/PixelEmoji'
 import { VictoryOverlay } from '@/components/match/VictoryOverlay'
 import { PageTransition } from '@/components/PageTransition'
+import { MONOLITH_HOURGLASS_BG, RUINED_DEBRIS_BG } from '@/lib/boardDecor'
+import { piecesForDimension } from '@/lib/dimPieces'
 import {
   portalReady,
   type MatchBoardSnapshot,
   type MatchEmotePayload,
+  type MatchJokerFxPayload,
   type PieceDragPayload,
   type ShopReadyPayload,
+  type SpectatorEmojiPayload,
 } from '@/lib/portal'
-import { previewAparicionFen, previewMorsmordreFen, previewRemovePieceFen } from '@/lib/jokerOptimistic'
+import { previewAparicionFen, previewMorsmordreFen, previewMultijugosFen, previewRemovePieceFen } from '@/lib/jokerOptimistic'
 import { fenHideEnemyInvisible } from '@/lib/invisibleFen'
 import {
   indicatorStyle,
@@ -37,9 +48,20 @@ import {
   legalInteractionSquares,
   ownInvisibleSquares,
 } from '@/lib/boardIndicators'
-import { isPhaseTransition, isStaleBoardPulse, isStaleMatchState } from '@/lib/matchFreshness'
+import { getDimension, isDarkDimension } from '@/lib/dimensions'
+import {
+  getJokerCastSquares,
+  getJokerFxSpec,
+  type JokerFxKind,
+} from '@/lib/jokerFx'
+import { easeOut } from '@/lib/motion'
+import { isPhaseTransition, isStaleBoardPulse, isStaleMatchState, matchProgress } from '@/lib/matchFreshness'
 import { useLiveClocks } from '@/hooks/useLiveClocks'
+import { useLobbyPresence } from '@/hooks/useLobbyPresence'
 import type { MatchState, Joker, MatchPlayer, PieceFlag } from '@/types/match'
+
+/** Paleta fija de reacciones de espectador (videojuego + temática ajedrez). */
+const SPECTATOR_REACTIONS = ['☠️', '😁', '😂', '😯', '🙌', '🎉', '🎊', '♟️']
 
 /** Alinea el FEN con matches.turn_color (Giratiempo / desync). */
 function fenWithSideToMove(fen: string, color: 'white' | 'black'): string {
@@ -84,49 +106,17 @@ function formatMs(ms: number) {
   return `${m}:${r.toString().padStart(2, '0')}`
 }
 
-const dimInfo: Record<string, { name: string; description: string }> = {
-  primo: {
-    name: 'Tablero Primo',
-    description: 'Ajedrez clásico sin anomalías. Primera fase de cada partida.',
-  },
-  espejo: {
-    name: 'Dimensión Espejo',
-    description:
-      'Ejes de movimiento invertidos. Peones van hacia tu propia fila y pueden coronar ahí. Enroque: comando invertido, posición final clásica.',
-  },
-  bluriel: {
-    name: 'Dimensión Bluriel',
-    description: 'Tras mover, tus piezas se vuelven borrosas/invisibles al rival. El jaque siempre se anuncia.',
-  },
-  gravitacional: {
-    name: 'Dimensión Gravitacional',
-    description: 'Piezas de largo alcance (Q, R, B) máximo 3 casillas. Sin jaque ni pins más allá de 3.',
-  },
-  cadena_sangre: {
-    name: 'Cadena de Sangre',
-    description:
-      'Si hay captura legal disponible, es obligatoria. Exento si la captura deja al rey en jaque.',
-  },
-  ruina: {
-    name: 'Dimensión Ruina',
-    description:
-      'Casillas donde hubo captura quedan destruidas. Deslizantes no atraviesan; caballos pueden saltar a casilla sana.',
-  },
-  mercado_negro: {
-    name: 'El Mercado Negro',
-    description:
-      '4 monolitos de tiempo (+40–60s). Ocupar o atravesar otorga tiempo. Capturas dan hasta +15s. Spawn sobre pieza: absorbe y desaparece.',
-  },
-  fragilidad: {
-    name: 'Dimensión Fragilidad',
-    description:
-      'Si una pieza (no rey) queda amenazada por dos enemigos al final del turno, se destruye. El rey es inmune.',
-  },
-}
-
 export function MatchPage() {
   const { id = '' } = useParams()
-  const { user, ready, getToken } = useAuth()
+  const [searchParams] = useSearchParams()
+  const location = useLocation()
+  const cheerUsername = (searchParams.get('cheer') || '').toLowerCase()
+  const invitedUsername =
+    typeof (location.state as { invitedUsername?: string } | null)?.invitedUsername === 'string'
+      ? (location.state as { invitedUsername: string }).invitedUsername
+      : null
+  const { user, profile, ready, getToken } = useAuth()
+  const lobby = useLobbyPresence()
   const navigate = useNavigate()
   const [state, setState] = useState<MatchState | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -151,6 +141,27 @@ export function MatchPage() {
   const publishEmoteRef = useRef<
     ((payload: { matchId: string; uid: string; emote: string }) => Promise<void>) | null
   >(null)
+  const publishJokerFxRef = useRef<
+    | ((payload: {
+        matchId: string
+        uid: string
+        code: string
+        squares: string[]
+        fen?: string
+      }) => Promise<void>)
+    | null
+  >(null)
+  const publishSpectatorEmojiRef = useRef<
+    | ((payload: {
+        matchId: string
+        uid: string
+        username?: string
+        emoji: string
+        targetColor: 'white' | 'black'
+        emojiId?: string
+      }) => Promise<void>)
+    | null
+  >(null)
   const sendActivityRef = useRef<((kind: string) => void) | null>(null)
   const localDrag = useRef<{ from: string; piece: string } | null>(null)
   const [remoteDrag, setRemoteDrag] = useState<PieceDragPayload | null>(null)
@@ -164,36 +175,110 @@ export function MatchPage() {
   const [peerInfo, setPeerInfo] = useState<MatchPortalPeerInfo | null>(null)
   const [rivalEmote, setRivalEmote] = useState<string | null>(null)
   const emoteTimer = useRef<number | null>(null)
+  /** Reacciones de espectador (feed corto autoexpirable). */
+  const [spectatorEmojis, setSpectatorEmojis] = useState<ReactionEvent[]>([])
+  const spectatorEmojiKey = useRef(0)
+  const spectatorJoinTried = useRef(false)
+  const [emojiCooldownLeft, setEmojiCooldownLeft] = useState(0)
+  const emojiCooldownUntil = useRef(0)
+  const [codeCopied, setCodeCopied] = useState(false)
   const [boardFx, setBoardFx] = useState<{
     squares: string[]
-    kind: 'swap' | 'vanish'
+    kind: JokerFxKind
+    durationMs: number
   } | null>(null)
   const boardFxTimer = useRef<number | null>(null)
-  const [instantFx, setInstantFx] = useState<{ code: string; name: string } | null>(null)
-  const instantFxTimer = useRef<number | null>(null)
+  const [jokerBurst, setJokerBurst] = useState<{
+    squares: string[]
+    code: string
+    at: number
+  } | null>(null)
+  const burstTimer = useRef<number | null>(null)
+  const [clockFx, setClockFx] = useState<ClockFxEvent | null>(null)
+  const clockFxTimer = useRef<number | null>(null)
+  const [vanishingInvId, setVanishingInvId] = useState<string | null>(null)
   const [shopIntroDone, setShopIntroDone] = useState(false)
   const shopIntroCycleRef = useRef<number | null>(null)
+  const [revealDimension, setRevealDimension] = useState<string | null>(null)
+  const dimensionRef = useRef<string | null>(null)
+  const revealCycleRef = useRef<number | null>(null)
+  /** Intro Primo ya vista u omitida (rejoin a mitad de partida). */
+  const [primoIntroDone, setPrimoIntroDone] = useState(false)
+  /** Tablero solo tras cerrar el reveal a pantalla completa. */
+  const [boardVisible, setBoardVisible] = useState(false)
 
-  const flashBoardFx = useCallback((squares: string[], kind: 'swap' | 'vanish') => {
-    if (boardFxTimer.current != null) window.clearTimeout(boardFxTimer.current)
-    setBoardFx({ squares, kind })
-    boardFxTimer.current = window.setTimeout(() => {
-      setBoardFx(null)
+  const playJokerFx = useCallback((code: string, castSquares: string[]) => {
+    const spec = getJokerFxSpec(code)
+
+    const clearBoard = () => {
+      if (boardFxTimer.current != null) window.clearTimeout(boardFxTimer.current)
       boardFxTimer.current = null
-    }, kind === 'swap' ? 600 : 480)
+      setBoardFx(null)
+    }
+    const clearBurst = () => {
+      if (burstTimer.current != null) window.clearTimeout(burstTimer.current)
+      burstTimer.current = null
+      setJokerBurst(null)
+    }
+    const clearClock = () => {
+      if (clockFxTimer.current != null) window.clearTimeout(clockFxTimer.current)
+      clockFxTimer.current = null
+      setClockFx(null)
+    }
+
+    if (
+      spec.stage === 'clockSteal' ||
+      spec.stage === 'clockFreeze' ||
+      spec.stage === 'clockHaste'
+    ) {
+      clearClock()
+      setClockFx({ code, at: Date.now(), youSide: 'bottom' })
+      clockFxTimer.current = window.setTimeout(clearClock, spec.durationMs + 200)
+      return
+    }
+
+    if (spec.stage === 'boardCenter' || spec.stage === 'shield') {
+      clearBurst()
+      setJokerBurst({ squares: [], code, at: Date.now() })
+      burstTimer.current = window.setTimeout(clearBurst, spec.durationMs + 120)
+      return
+    }
+
+    clearBoard()
+    clearBurst()
+    const squares = castSquares.length ? castSquares : []
+    if (squares.length) {
+      setBoardFx({ squares, kind: spec.kind, durationMs: Math.min(spec.durationMs, 480) })
+      boardFxTimer.current = window.setTimeout(clearBoard, Math.min(spec.durationMs, 480) + 40)
+    }
+    setJokerBurst({ squares, code, at: Date.now() })
+    burstTimer.current = window.setTimeout(clearBurst, spec.durationMs + 80)
   }, [])
 
-  const flashInstantJoker = useCallback((code: string, name: string) => {
-    if (instantFxTimer.current != null) window.clearTimeout(instantFxTimer.current)
-    setInstantFx({ code, name })
-    instantFxTimer.current = window.setTimeout(() => {
-      setInstantFx(null)
-      instantFxTimer.current = null
-    }, 1000)
+  const clearJokerFx = useCallback(() => {
+    if (boardFxTimer.current != null) window.clearTimeout(boardFxTimer.current)
+    if (burstTimer.current != null) window.clearTimeout(burstTimer.current)
+    if (clockFxTimer.current != null) window.clearTimeout(clockFxTimer.current)
+    boardFxTimer.current = null
+    burstTimer.current = null
+    clockFxTimer.current = null
+    setBoardFx(null)
+    setJokerBurst(null)
+    setClockFx(null)
+    setVanishingInvId(null)
   }, [])
 
   const finishShopIntro = useCallback(() => {
     setShopIntroDone(true)
+  }, [])
+
+  const dismissDimensionReveal = useCallback(() => {
+    setPrimoIntroDone(true)
+    setRevealDimension(null)
+  }, [])
+
+  const onRevealExitComplete = useCallback(() => {
+    setBoardVisible(true)
   }, [])
 
   // Errores / ilegales: toast corto y auto-dismiss
@@ -214,10 +299,18 @@ export function MatchPage() {
     (s: MatchState, opts?: { publish?: boolean; resetClock?: boolean; reason?: string }) => {
       // No aplicar REST viejo (poll/dirty atrasado) encima de un estado más nuevo
       if (isStaleMatchState(s, stateRef.current)) return
+      const prev = stateRef.current
       stateRef.current = s
       // No pisar lastBoardAt con Date.now(): bloquearía pulsos Portal legítimos
       setState(s)
-      setOptimisticFen(null)
+      // Conservar preview local hasta que el server alcance el FEN (anti snap-back)
+      setOptimisticFen((opt) => {
+        if (!opt) return null
+        if (s.match.fen === opt) return null
+        if (prev && matchProgress(s.match) > matchProgress(prev.match)) return null
+        if (prev && s.match.fen === prev.match.fen) return opt
+        return null
+      })
       setRemoteDrag(null)
       if (s.match.status !== 'shop' && s.match.phase !== 'shop') {
         setShopPeek(false)
@@ -228,6 +321,55 @@ export function MatchPage() {
     [],
   )
 
+  /** Dispara una reacción local (el que envía la ve al instante, sin esperar eco Portal). */
+  const triggerEmojiBurst = useCallback(
+    (emoji: string, opts?: { username?: string; targetColor?: 'white' | 'black' }) => {
+      const key = ++spectatorEmojiKey.current
+      const targetColor = opts?.targetColor ?? 'white'
+      setSpectatorEmojis((prev) => [
+        ...prev.slice(-7),
+        { key, emoji, username: opts?.username, targetColor },
+      ])
+      window.setTimeout(() => {
+        setSpectatorEmojis((prev) => prev.filter((e) => e.key !== key))
+      }, 3600)
+    },
+    [],
+  )
+
+  /**
+   * Reacciones: Portal ephemeral (rápido) + Neon recent_emojis vía dirty/poll.
+   * Dedupe por id; las propias ya se mostraron local-first.
+   */
+  const seenEmojiIds = useRef<Set<string>>(new Set())
+  const emojiFeedPrimed = useRef(false)
+
+  useEffect(() => {
+    seenEmojiIds.current.clear()
+    emojiFeedPrimed.current = false
+  }, [id])
+
+  const ingestEmojiFeed = useCallback(
+    (feed: MatchState['recent_emojis'] | undefined) => {
+      if (!feed) return
+      if (!emojiFeedPrimed.current) {
+        emojiFeedPrimed.current = true
+        for (const e of feed) seenEmojiIds.current.add(e.id)
+        return
+      }
+      for (const e of feed) {
+        if (seenEmojiIds.current.has(e.id)) continue
+        seenEmojiIds.current.add(e.id)
+        if (user?.uid && e.from_uid === user.uid) continue
+        triggerEmojiBurst(e.emoji, {
+          username: e.username,
+          targetColor: e.target_color === 'black' ? 'black' : 'white',
+        })
+      }
+    },
+    [user?.uid, triggerEmojiBurst],
+  )
+
   const load = useCallback(async () => {
     const token = await getToken()
     if (!token) return
@@ -235,21 +377,27 @@ export function MatchPage() {
     const { state: s } = await api.getMatch(token, id)
     // Respuesta fuera de orden (poll lento / dirty duplicado)
     if (gen !== fetchGenRef.current) return
-    applyState(s as MatchState, { publish: false, resetClock: true })
-  }, [getToken, id, applyState])
+    const next = s as MatchState
+    ingestEmojiFeed(next.recent_emojis)
+    applyState(next, { publish: false, resetClock: true })
+  }, [getToken, id, applyState, ingestEmojiFeed])
 
   const lastSyncAt = useRef(0)
-  const syncFromServer = useCallback(() => {
+  const syncFromServer = useCallback((opts?: { force?: boolean }) => {
     const now = Date.now()
-    if (now - lastSyncAt.current < 200) return
+    // Tras tienda→grieta hay que forzar: el throttle de 200ms puede botar el refetch
+    // que trae current_dimension y dejar la dim anterior hasta el poll largo.
+    if (!opts?.force && now - lastSyncAt.current < 200) return
     lastSyncAt.current = now
     setRemoteDrag(null)
     void load().catch(() => undefined)
   }, [load])
 
   const onDirty = useCallback(
-    (_reason: string) => {
-      syncFromServer()
+    (reason: string) => {
+      const force =
+        /shop|close|dimension|reveal|timeout/i.test(reason)
+      syncFromServer({ force })
     },
     [syncFromServer],
   )
@@ -284,8 +432,15 @@ export function MatchPage() {
       })
 
       setRemoteDrag(null)
-      if (board.fen || board.status === 'finished' || phaseChanging) {
+      if (board.status === 'finished' || phaseChanging) {
         setOptimisticFen(null)
+      } else if (board.fen) {
+        setOptimisticFen((opt) => {
+          if (!opt) return null
+          if (board.fen === opt) return null
+          if (current && board.fen === current.match.fen) return opt
+          return null
+        })
       }
 
       setState((prev) => {
@@ -322,6 +477,9 @@ export function MatchPage() {
             match: {
               ...prev.match,
               ...(board.fen ? { fen: board.fen } : {}),
+              ...(board.current_dimension
+                ? { current_dimension: board.current_dimension }
+                : {}),
               cycle_index: board.cycle_index || prev.match.cycle_index,
               moves_in_phase:
                 board.moves_in_phase !== undefined && board.moves_in_phase !== null
@@ -353,6 +511,9 @@ export function MatchPage() {
             ...prev,
             match: {
               ...prev.match,
+              ...(board.current_dimension
+                ? { current_dimension: board.current_dimension }
+                : {}),
               white_time_ms: board.white_time_ms,
               black_time_ms: board.black_time_ms,
               turn_color: board.turn_color as MatchState['match']['turn_color'],
@@ -377,6 +538,9 @@ export function MatchPage() {
           match: {
             ...prev.match,
             fen: board.fen,
+            ...(board.current_dimension
+              ? { current_dimension: board.current_dimension }
+              : {}),
             cycle_index: board.cycle_index || prev.match.cycle_index,
             moves_in_phase: board.moves_in_phase || prev.match.moves_in_phase,
             status: (board.status || prev.match.status) as MatchState['match']['status'],
@@ -392,9 +556,9 @@ export function MatchPage() {
         return next
       })
 
-      // Portal anuncia la fase; Neon completa shop/inventory
+      // Portal anuncia la fase; Neon completa shop/inventory/dimensión
       if (board.status === 'finished' || phaseChanging) {
-        syncFromServer()
+        syncFromServer({ force: true })
         return
       }
       if (board.fen) turnStarted.current = Date.now()
@@ -449,9 +613,53 @@ export function MatchPage() {
     }, 2200)
   }, [user?.uid])
 
+  const onJokerFxPulse = useCallback(
+    (p: MatchJokerFxPayload) => {
+      if (user?.uid && p.uid === user.uid) return
+      if (p.fen) {
+        setOptimisticFen(p.fen)
+        setState((prev) => {
+          if (!prev) return prev
+          const next = { ...prev, match: { ...prev.match, fen: p.fen! } }
+          stateRef.current = next
+          return next
+        })
+      }
+      playJokerFx(p.code, p.squares ?? [])
+    },
+    [user?.uid, playJokerFx],
+  )
+
+  /** Shatter FX cuando una reina Multijugos desaparece del tablero. */
+  const mjSquaresRef = useRef<string[]>([])
+  useEffect(() => {
+    const next = (state?.flags || [])
+      .filter((f) => f.multijugos_queen && f.square)
+      .map((f) => f.square as string)
+    const lost = mjSquaresRef.current.filter((sq) => !next.includes(sq))
+    if (lost.length) playJokerFx('pocion_multijugos', lost)
+    mjSquaresRef.current = next
+  }, [state?.flags, playJokerFx])
+
   const onPeerInfo = useCallback((info: MatchPortalPeerInfo) => {
     setPeerInfo(info)
   }, [])
+
+  /** Vía rápida: emoji entrante por Portal. */
+  const onSpectatorEmojiPulse = useCallback(
+    (p: SpectatorEmojiPayload) => {
+      if (p.emojiId) {
+        if (seenEmojiIds.current.has(p.emojiId)) return
+        seenEmojiIds.current.add(p.emojiId)
+      }
+      if (user?.uid && p.uid === user.uid) return
+      triggerEmojiBurst(p.emoji, {
+        username: p.username,
+        targetColor: p.targetColor === 'black' ? 'black' : 'white',
+      })
+    },
+    [user?.uid, triggerEmojiBurst],
+  )
 
   // Si el oponente suelta el drag y no llega el end, limpiar
   useEffect(() => {
@@ -464,6 +672,15 @@ export function MatchPage() {
     if (!ready || !user) return
     load().catch((err) => setError(err instanceof Error ? err.message : 'Error'))
   }, [ready, user, load])
+
+  // Nueva partida (rematch / deep link): resetear reveal
+  useEffect(() => {
+    dimensionRef.current = null
+    revealCycleRef.current = null
+    setPrimoIntroDone(false)
+    setBoardVisible(false)
+    setRevealDimension(null)
+  }, [id])
 
   useEffect(() => {
     if (!ready || !user || !id) return
@@ -483,9 +700,44 @@ export function MatchPage() {
 
   const you = state?.you
   const match = state?.match
+  /** Sin asiento en la partida → modo espectador (solo lectura). */
+  const isSpectator = Boolean(state && !state.you)
+
+  /** Color del jugador al que anima el espectador (?cheer=username). */
+  const cheerTargetColor = useMemo((): 'white' | 'black' => {
+    if (!state?.players?.length) return 'white'
+    if (cheerUsername) {
+      const hit = state.players.find(
+        (p) => (p.username || '').toLowerCase() === cheerUsername,
+      )
+      if (hit?.color === 'black' || hit?.color === 'white') return hit.color
+    }
+    return 'white'
+  }, [state?.players, cheerUsername])
+
+  const boardOrientation: 'white' | 'black' = you?.color === 'black'
+    ? 'black'
+    : isSpectator
+      ? cheerTargetColor
+      : 'white'
+
+  // Ranking en vivo: marcar playing en metadata del lobby
+  useEffect(() => {
+    if (!ready || !user || !match || isSpectator) return
+    if (match.status === 'finished' || match.status === 'waiting') {
+      lobby.setPlaying(false)
+      return
+    }
+    lobby.setPlaying(true)
+    return () => {
+      lobby.setPlaying(false)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, user, match?.status, match?.id, isSpectator])
+
   const inShopPhase = Boolean(match && (match.status === 'shop' || match.phase === 'shop'))
   const youShopReady = Boolean(you?.shop_ready)
-  const isShop = inShopPhase && !youShopReady
+  const isShop = inShopPhase && !youShopReady && !isSpectator
   const isShopWaiting = inShopPhase && youShopReady
   const isWaitingRival = match?.status === 'waiting'
   const isFinished = match?.status === 'finished'
@@ -507,9 +759,119 @@ export function MatchPage() {
 
   const showShopIntro = isShop && !isFinished && !shopIntroDone
   const showShopModal = isShop && !isFinished && shopIntroDone
+  const dimMeta = getDimension(match?.current_dimension)
+  const darkDim = isDarkDimension(dimMeta.id)
+  const dimPieces = useMemo(() => piecesForDimension(darkDim), [darkDim])
+  const openingPrimo =
+    Boolean(match) &&
+    !primoIntroDone &&
+    !isFinished &&
+    match!.status === 'active' &&
+    match!.phase === 'primo' &&
+    match!.current_dimension === 'primo' &&
+    match!.cycle_index === 0 &&
+    (match!.moves_in_phase ?? 0) === 0
+
+  /** Reveal síncrono en el 1er paint (Primo) o el que dispara el efecto (otras dims). */
+  const activeReveal = revealDimension ?? (openingPrimo ? 'primo' : null)
+  const showMatchBoard = boardVisible && !activeReveal
+
+  // Reveal: Primo al inicio (derivado); luego al cambiar dimensión / ciclo grieta
+  useEffect(() => {
+    if (!match) return
+    if (isFinished) {
+      setBoardVisible(true)
+      return
+    }
+    const dim = match.current_dimension
+    const cycle = match.cycle_index
+    if (!dim) return
+
+    const isOpeningPrimo =
+      match.status === 'active' &&
+      match.phase === 'primo' &&
+      dim === 'primo' &&
+      cycle === 0 &&
+      (match.moves_in_phase ?? 0) === 0
+
+    if (isOpeningPrimo && !primoIntroDone) {
+      dimensionRef.current = dim
+      revealCycleRef.current = cycle
+      setBoardVisible(false)
+      return
+    }
+
+    if (dimensionRef.current === null) {
+      dimensionRef.current = dim
+      revealCycleRef.current = cycle
+      // Join a mitad / sin intro Primo: tablero ya
+      if (!primoIntroDone) setPrimoIntroDone(true)
+      setBoardVisible(true)
+      return
+    }
+
+    const dimChanged = dimensionRef.current !== dim
+    const cycleAdvanced =
+      revealCycleRef.current != null &&
+      cycle > revealCycleRef.current &&
+      match.status === 'active' &&
+      match.phase === 'grieta'
+
+    if (!dimChanged && !cycleAdvanced) {
+      if (cycle !== revealCycleRef.current) revealCycleRef.current = cycle
+      return
+    }
+
+    dimensionRef.current = dim
+    revealCycleRef.current = cycle
+    setBoardVisible(false)
+    setRevealDimension(dim)
+  }, [
+    match?.current_dimension,
+    match?.cycle_index,
+    match?.moves_in_phase,
+    match?.status,
+    match?.phase,
+    isFinished,
+    match,
+    primoIntroDone,
+  ])
+
+  useEffect(() => {
+    if (!activeReveal) return
+    const t = window.setTimeout(() => dismissDimensionReveal(), 3400)
+    return () => window.clearTimeout(t)
+  }, [activeReveal, dismissDimensionReveal])
+
   const clocks = useLiveClocks(match, state?.players)
   const timeoutClaimed = useRef(false)
   const shopTimeoutClaimed = useRef(false)
+
+  // Auto-registro como espectador en Neon (idempotente). Cubre link directo y refresh.
+  useEffect(() => {
+    if (!isSpectator || !id || isFinished || isWaitingRival || spectatorJoinTried.current) return
+    if (match?.allow_spectators === false) return
+    spectatorJoinTried.current = true
+    void (async () => {
+      try {
+        const token = await getToken()
+        if (!token) return
+        const { state: s } = await api.spectateMatch(token, id)
+        applyState(s as MatchState, { publish: false })
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'No se pudo espectar')
+      }
+    })()
+  }, [isSpectator, id, isFinished, isWaitingRival, match?.allow_spectators, getToken, applyState])
+
+  // Cooldown UX del emoji de espectador (el real lo valida Neon: 8s)
+  useEffect(() => {
+    if (emojiCooldownLeft <= 0) return
+    const t = window.setInterval(() => {
+      setEmojiCooldownLeft(Math.max(0, emojiCooldownUntil.current - Date.now()))
+    }, 250)
+    return () => window.clearInterval(t)
+  }, [emojiCooldownLeft])
 
   // Reto: host espera a que el rival acepte (join)
   useEffect(() => {
@@ -550,8 +912,9 @@ export function MatchPage() {
   }, [inShopPhase, match?.shop_ends_at, match?.cycle_index])
 
   // Flag: cuando un reloj vivo llega a 0, el server cierra la partida por tiempo
+  // (solo jugadores; el espectador no tiene asiento para declarar timeout)
   useEffect(() => {
-    if (!match || !id || isFinished || match.status !== 'active') {
+    if (!match || !id || isFinished || match.status !== 'active' || isSpectator) {
       timeoutClaimed.current = false
       return
     }
@@ -585,9 +948,9 @@ export function MatchPage() {
     load,
   ])
 
-  // Minuto de tienda agotado → forzar cierre en Neon
+  // Minuto de tienda agotado → forzar cierre en Neon (lo declaran los jugadores)
   useEffect(() => {
-    if (!inShopPhase || !id || isFinished) {
+    if (!inShopPhase || !id || isFinished || isSpectator) {
       shopTimeoutClaimed.current = false
       return
     }
@@ -702,6 +1065,16 @@ export function MatchPage() {
     [state?.flags, you?.color],
   )
 
+  const jokerAimAura = useMemo(() => {
+    if (!aim) return null
+    const squares = [
+      ...new Set([...jokerHints.hostile, ...jokerHints.ally, ...jokerHints.empty]),
+    ]
+    if (!squares.length) return null
+    const spec = getJokerFxSpec(aim.mode.code)
+    return { squares, theme: spec.theme, code: aim.mode.code }
+  }, [aim, jokerHints])
+
   const dragSquareStyles = useMemo(() => {
     const styles: Record<string, React.CSSProperties> = {}
 
@@ -716,13 +1089,24 @@ export function MatchPage() {
         }
       } else if (c.effect === 'ruined') {
         styles[sq] = {
-          backgroundColor: 'rgba(60, 55, 45, 0.5)',
-          boxShadow: 'inset 0 0 0 2px rgba(40, 35, 30, 0.45)',
+          backgroundColor: 'rgba(40, 36, 30, 0.55)',
+          backgroundImage: RUINED_DEBRIS_BG,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          boxShadow: 'inset 0 0 0 2px rgba(30, 26, 22, 0.55)',
         }
       } else if (c.effect === 'monolith') {
         styles[sq] = {
-          backgroundColor: 'rgba(212, 175, 55, 0.28)',
-          boxShadow: 'inset 0 0 0 2px rgba(212, 175, 55, 0.45)',
+          backgroundColor: 'rgba(212, 175, 55, 0.22)',
+          backgroundImage: MONOLITH_HOURGLASS_BG,
+          backgroundRepeat: 'no-repeat',
+          backgroundPosition: 'center',
+          backgroundSize: '42%',
+          boxShadow: 'inset 0 0 0 2px rgba(212, 175, 55, 0.5)',
+          animationName: 'rc-monolith-bob',
+          animationDuration: '2.4s',
+          animationTimingFunction: 'ease-in-out',
+          animationIterationCount: 'infinite',
         }
       } else if (c.effect === 'trap_defodio') {
         // Solo el dueño ve la trampa; el rival no debe saber dónde está.
@@ -737,7 +1121,15 @@ export function MatchPage() {
 
     // Piezas propias invisibles (capa) — siempre visibles para ti
     for (const sq of invisibleHints) {
-      styles[sq] = { ...(styles[sq] ?? {}), ...indicatorStyle('invisible') }
+      styles[sq] = {
+        ...(styles[sq] ?? {}),
+        ...indicatorStyle('invisible'),
+        filter: 'blur(1.6px) saturate(0.75) opacity(0.55)',
+        animationName: 'rc-piece-cloak',
+        animationDuration: '2.2s',
+        animationIterationCount: 'infinite',
+        animationTimingFunction: 'ease-in-out',
+      }
     }
 
     // Destinos legales (parpadeo a tamaño de casilla)
@@ -745,7 +1137,12 @@ export function MatchPage() {
       styles[sq] = { ...(styles[sq] ?? {}), ...indicatorStyle('move') }
     }
     for (const sq of moveHints.captures) {
-      styles[sq] = { ...(styles[sq] ?? {}), ...indicatorStyle('capture') }
+      styles[sq] = {
+        ...(styles[sq] ?? {}),
+        ...indicatorStyle(
+          match?.current_dimension === 'cadena_sangre' ? 'blood_capture' : 'capture',
+        ),
+      }
     }
 
     // Objetivos de comodín en apuntado
@@ -759,11 +1156,14 @@ export function MatchPage() {
       for (const sq of jokerHints.hostile) {
         styles[sq] = { ...(styles[sq] ?? {}), ...indicatorStyle('joker_hostile') }
       }
+      // Selección parcial (apareción / imperius): acento suave sin tapar el tema
       aim.squares.forEach((sq, i) => {
         styles[sq] = {
-          backgroundColor:
-            i === 0 ? 'rgba(212, 175, 55, 0.55)' : 'rgba(115, 92, 0, 0.5)',
-          boxShadow: 'inset 0 0 0 2px rgba(212, 175, 55, 0.9)',
+          ...(styles[sq] ?? {}),
+          boxShadow:
+            i === 0
+              ? 'inset 0 0 0 2px rgba(212, 175, 55, 0.85)'
+              : 'inset 0 0 0 2px rgba(180, 150, 60, 0.7)',
         }
       })
     }
@@ -792,8 +1192,8 @@ export function MatchPage() {
       for (const sq of boardFx.squares) {
         styles[sq] = {
           ...(styles[sq] ?? {}),
-          animationName: boardFx.kind === 'swap' ? 'rc-joker-swap' : 'rc-joker-vanish',
-          animationDuration: boardFx.kind === 'swap' ? '0.55s' : '0.45s',
+          animationName: `rc-joker-${boardFx.kind}`,
+          animationDuration: `${Math.max(0.45, boardFx.durationMs / 1000)}s`,
           animationTimingFunction: 'ease-out',
           animationFillMode: 'both',
           animationIterationCount: 1,
@@ -811,6 +1211,7 @@ export function MatchPage() {
     moveHints,
     jokerHints,
     selectedSquare,
+    match?.current_dimension,
   ])
 
   // Esc cancela apuntado / selección
@@ -938,11 +1339,14 @@ export function MatchPage() {
       <MatchPortalBridge
         matchId={id}
         color={you?.color}
+        isSpectator={isSpectator}
         onDirty={onDirty}
         onBoardPulse={onBoardPulse}
         onPieceDrag={onRemotePieceDrag}
         onShopReady={onShopReadyPulse}
         onEmote={onEmotePulse}
+        onJokerFx={onJokerFxPulse}
+        onSpectatorEmoji={onSpectatorEmojiPulse}
         onChannelReady={onChannelReady}
         onPeerInfo={onPeerInfo}
         publishRef={publishRef}
@@ -950,6 +1354,8 @@ export function MatchPage() {
         publishBoardRef={publishBoardRef}
         publishShopReadyRef={publishShopReadyRef}
         publishEmoteRef={publishEmoteRef}
+        publishJokerFxRef={publishJokerFxRef}
+        publishSpectatorEmojiRef={publishSpectatorEmojiRef}
         sendActivityRef={sendActivityRef}
       />
     ) : null
@@ -968,7 +1374,7 @@ export function MatchPage() {
     if (match!.current_dimension === 'espejo') {
       const mirrored = mirrorCommand(sourceSquare, targetSquare)
       if (!mirrored || mirrored === sourceSquare) {
-        setError('Espejo: ese comando sale del tablero al invertirse')
+        setError('Espejo: ese movimiento cae fuera del tablero')
         return false
       }
       dest = mirrored
@@ -1001,7 +1407,7 @@ export function MatchPage() {
       const df = Math.abs(dest.charCodeAt(0) - sourceSquare.charCodeAt(0))
       const dr = Math.abs(Number(dest[1]) - Number(sourceSquare[1]))
       if (Math.max(df, dr) > 3) {
-        setError('Dimensión gravitacional: máximo 3 casillas')
+        setError('Gravitacional: dama, torre y alfil solo llegan a 3 casillas')
         return false
       }
     }
@@ -1034,7 +1440,7 @@ export function MatchPage() {
         const destOcc = chess.get(dest as 'a1')
         const thisCaptures = Boolean(destOcc && destOcc.color !== piece?.color)
         if (captureExists && !thisCaptures) {
-          setError('Cadena de sangre: hay una captura disponible y es obligatoria')
+          setError('Cadena de Sangre: si puedes capturar, debes hacerlo')
           return false
         }
       } catch {
@@ -1249,6 +1655,7 @@ export function MatchPage() {
     setBusy(true)
     setError(null)
     setAim(null)
+    setVanishingInvId(inventoryId)
 
     // Optimista: inventario + FEN de tablero cuando el comodín lo cambia
     let previewFen: string | null = null
@@ -1260,10 +1667,8 @@ export function MatchPage() {
           payload.b,
           state.you.color,
         )
-        if (previewFen) flashBoardFx([payload.a, payload.b], 'swap')
       } else if (code === 'avada_kedavra' && typeof payload.square === 'string') {
         previewFen = previewRemovePieceFen(state.match.fen, payload.square)
-        if (previewFen) flashBoardFx([payload.square], 'vanish')
       } else if (code === 'morsmordre' && typeof payload.square === 'string') {
         previewFen = previewMorsmordreFen(
           state.match.fen,
@@ -1271,23 +1676,44 @@ export function MatchPage() {
           state.you.color,
           blockedSquares,
         )
-        if (previewFen) flashBoardFx([payload.square], 'vanish')
+      } else if (code === 'pocion_multijugos' && typeof payload.square === 'string') {
+        previewFen = previewMultijugosFen(
+          state.match.fen,
+          payload.square,
+          state.you.color,
+        )
       }
     }
+    const castSquares = code ? getJokerCastSquares(code, payload) : []
+    if (code) {
+      playJokerFx(code, castSquares)
+    }
     if (previewFen) {
-      // Solo local: el publish real sale con applyState tras el REST
       setOptimisticFen(previewFen)
+      // Portal: rival ve el FEN al instante (preview) sin esperar Neon
+      void publishBoardRef.current?.(
+        { ...state, match: { ...state.match, fen: previewFen } },
+        { preview: true },
+      )
+    }
+    // Portal FX inmediato (peers) — no esperar REST
+    if (code && user?.uid) {
+      void publishJokerFxRef.current?.({
+        matchId: id,
+        uid: user.uid,
+        code,
+        squares: castSquares,
+        ...(previewFen ? { fen: previewFen } : {}),
+      })
     }
 
     if (item && code) {
+      // Efectos optimistas ya (FEN/flags/reloj); el slot sale tras la animación
       setState((prev) => {
         if (!prev?.you) return prev
         let next = {
           ...prev,
-          inventory: (prev.inventory || []).filter((i) => i.id !== inventoryId),
-          ...(previewFen
-            ? { match: { ...prev.match, fen: previewFen } }
-            : {}),
+          ...(previewFen ? { match: { ...prev.match, fen: previewFen } } : {}),
         }
         const you = { ...next.you! }
         const players = (next.players || []).map((p) =>
@@ -1347,16 +1773,48 @@ export function MatchPage() {
             flags: [...(next.flags || []).filter((f) => f.square !== sq), flag],
           }
         }
+        if (code === 'pocion_multijugos' && typeof payload.square === 'string') {
+          const sq = payload.square
+          const flag: PieceFlag = {
+            piece_uid: `mj:${sq}:opt`,
+            color: you.color,
+            kind: 'q',
+            square: sq,
+            was_pawn: true,
+            multijugos_queen: true,
+          }
+          next = {
+            ...next,
+            flags: [...(next.flags || []).filter((f) => f.square !== sq), flag],
+          }
+        }
         return { ...next, players, you }
       })
+
+      window.setTimeout(() => {
+        setState((prev) => {
+          if (!prev) return prev
+          return {
+            ...prev,
+            inventory: (prev.inventory || []).filter((i) => i.id !== inventoryId),
+          }
+        })
+        setVanishingInvId(null)
+      }, 200)
+    } else {
+      setVanishingInvId(null)
     }
 
     try {
       const token = await getToken()
-      if (!token) return
+      if (!token) {
+        clearJokerFx()
+        return
+      }
       const { state: s } = await api.useJoker(token, id, inventoryId, payload)
       applyState(s as MatchState, { reason: 'use_joker' })
     } catch (err) {
+      clearJokerFx()
       setOptimisticFen(null)
       setError(err instanceof Error ? err.message : 'No se pudo usar')
       await load().catch(() => undefined)
@@ -1373,7 +1831,6 @@ export function MatchPage() {
       return
     }
     if (!needsBoardTarget(joker.code)) {
-      flashInstantJoker(joker.code, joker.name)
       void castJoker(inventoryId, {})
       return
     }
@@ -1441,18 +1898,54 @@ export function MatchPage() {
   }
 
   async function resign() {
+    if (isSpectator) return
     const token = await getToken()
     if (!token) return
     const { state: s } = await api.resignMatch(token, id)
     applyState(s as MatchState, { reason: 'resign' })
   }
 
+  /** Emoji del espectador: Neon valida cooldown → Portal hace el fan-out. */
+  async function sendSpectatorEmoji(emoji: string) {
+    if (!emoji || !user?.uid || emojiCooldownLeft > 0) return
+    try {
+      const token = await getToken()
+      if (!token) return
+      const res = await api.sendSpectatorEmoji(token, id, emoji)
+      const emojiId = res.emoji?.id
+      if (emojiId) seenEmojiIds.current.add(emojiId)
+      emojiCooldownUntil.current = Date.now() + 8000
+      setEmojiCooldownLeft(8000)
+      triggerEmojiBurst(emoji, {
+        username: profile?.username,
+        targetColor: cheerTargetColor,
+      })
+      void publishSpectatorEmojiRef.current?.({
+        matchId: id,
+        uid: user.uid,
+        username: profile?.username,
+        emoji,
+        targetColor: cheerTargetColor,
+        emojiId,
+      })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : ''
+      if (msg.includes('cooldown')) {
+        emojiCooldownUntil.current = Date.now() + 8000
+        setEmojiCooldownLeft(8000)
+      } else {
+        setError(msg || 'No se pudo enviar el emoji')
+      }
+    }
+  }
+
   if (ready && !user) return <Navigate to="/login" replace />
   if (!state || !match) {
     return (
       <>
+        <DimensionEnv theme="primo" persistent />
         {bridge}
-        <p className="font-label text-xs uppercase tracking-wider text-[var(--color-ink-muted)]">
+        <p className="relative z-[1] font-label text-xs uppercase tracking-wider text-[var(--color-ink-muted)]">
           {error ?? 'Cargando partida…'}
         </p>
       </>
@@ -1465,7 +1958,7 @@ export function MatchPage() {
   const black = state.players.find((p) => p.color === 'black')
 
   // Rival arriba, tú abajo (según orientación del tablero)
-  const myColor: 'white' | 'black' = you?.color === 'black' ? 'black' : 'white'
+  const myColor: 'white' | 'black' = boardOrientation
   const rivalColor: 'white' | 'black' = myColor === 'white' ? 'black' : 'white'
   const myPlayer = myColor === 'white' ? white : black
   const rivalPlayer = rivalColor === 'white' ? white : black
@@ -1474,12 +1967,25 @@ export function MatchPage() {
 
   const youWon = Boolean(you?.profile_id && match.winner_id && match.winner_id === you.profile_id)
   const isDraw = match.result === 'draw' || match.result === 'abort'
-  const victoryTitle = isDraw ? 'Tablas' : youWon ? 'Victoria' : 'Derrota'
+  const winnerPlayer = match.winner_id
+    ? state.players.find((p) => p.profile_id === match.winner_id)
+    : null
+  const victoryTitle = isDraw
+    ? 'Tablas'
+    : isSpectator
+      ? 'Partida terminada'
+      : youWon
+        ? 'Victoria'
+        : 'Derrota'
   const victorySubtitle = isDraw
     ? 'El tablero se queda en empate. El tiempo no eligió bando.'
-    : youWon
-      ? 'La dimensión te sonrió. Tu reloj aún late.'
-      : 'Otra grieta, otra chance. El mercado te espera de nuevo.'
+    : isSpectator
+      ? winnerPlayer
+        ? `Ganó ${winnerPlayer.display_name ?? winnerPlayer.username ?? (winnerPlayer.color === 'white' ? 'blancas' : 'negras')}. Gracias por espectar.`
+        : 'La partida llegó a su fin. Gracias por espectar.'
+      : youWon
+        ? 'La grieta te sonrió. Conserva el tempo.'
+        : 'Otra partida, otra grieta. El mercado te espera.'
   const resultLabel =
     match.result === 'resign'
       ? 'Por rendición'
@@ -1499,11 +2005,15 @@ export function MatchPage() {
   }
 
   return (
-    <PageTransition className="flex min-h-0 flex-1 flex-col">
+    <PageTransition
+      className={`rc-match-dim rc-match-dim--${dimMeta.id} relative flex min-h-0 flex-1 flex-col overflow-hidden`}
+    >
+      <DimensionEnv theme={dimMeta.id} persistent />
       {bridge}
       <MatchToast
         message={error}
         tone="error"
+        dark={darkDim}
         className={aim ? '!top-[5.5rem]' : undefined}
       />
       {aim ? (
@@ -1512,21 +2022,23 @@ export function MatchPage() {
           jokerName={aim.jokerName}
           mode={aim.mode}
           selected={aim.squares}
+          dark={darkDim}
           onCancel={() => setAim(null)}
         />
       ) : null}
-      <InstantJokerFx
-        open={Boolean(instantFx)}
-        code={instantFx?.code ?? ''}
-        name={instantFx?.name ?? ''}
-      />
       <ShopIntroOverlay
-        open={showShopIntro}
+        open={showShopIntro && showMatchBoard}
         cycleIndex={match.cycle_index}
+        dark={darkDim || dimMeta.id === 'cadena_sangre'}
         onDone={finishShopIntro}
       />
+      <DimensionReveal
+        dimensionId={activeReveal}
+        onDismiss={dismissDimensionReveal}
+        onExitComplete={onRevealExitComplete}
+      />
       <ShopPhaseModal
-        open={showShopModal}
+        open={showShopModal && showMatchBoard}
         cycleIndex={match.cycle_index}
         timeMs={yourTimeMs}
         shopLeftMs={shopLeftMs || 60000}
@@ -1536,12 +2048,13 @@ export function MatchPage() {
         busy={busy}
         justBoughtOfferId={justBoughtOfferId}
         justBoughtInventoryId={justBoughtInventoryId}
+        dimensionId={dimMeta.id}
         onBuy={(offerId) => void buy(offerId)}
         onSell={(inventoryId) => void sell(inventoryId)}
         onContinue={() => void closeShop()}
       />
       <ShopWaitOverlay
-        open={isShopWaiting && !isFinished}
+        open={isShopWaiting && !isFinished && showMatchBoard}
         peek={shopPeek}
         shopLeftMs={shopLeftMs}
         rivalShopping={peerInfo?.shoppingActivity}
@@ -1555,13 +2068,15 @@ export function MatchPage() {
         resultLabel={resultLabel}
         youWon={youWon && !isDraw}
         onExit={() => navigate('/')}
-        onRematch={() => void rematch()}
+        onRematch={isSpectator ? undefined : () => void rematch()}
       />
       <div
-        className={`flex min-h-0 flex-1 flex-col ${
+        className={`relative z-[1] flex min-h-0 flex-1 flex-col ${
+          !showMatchBoard ? 'invisible pointer-events-none' : ''
+        } ${
           isShop || (isShopWaiting && !shopPeek) ? 'pointer-events-none select-none' : ''
         }`}
-        aria-hidden={isShop || (isShopWaiting && !shopPeek) || undefined}
+        aria-hidden={!showMatchBoard || isShop || (isShopWaiting && !shopPeek) || undefined}
       >
         {/* Barra meta: logo + acciones */}
         <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-1 pb-1.5">
@@ -1579,30 +2094,14 @@ export function MatchPage() {
             ) : null}
           </div>
           <div className="flex items-center gap-1.5">
-            {!isFinished && !isWaitingRival ? (
-              <>
-                {['👍', '😮', '🔥', '♟️'].map((emote) => (
-                  <button
-                    key={emote}
-                    type="button"
-                    className="btn-ghost !px-2 !py-1 text-sm"
-                    title="Emote Portal"
-                    onClick={() => {
-                      if (!user?.uid) return
-                      void publishEmoteRef.current?.({ matchId: id, uid: user.uid, emote })
-                    }}
-                  >
-                    {emote}
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  onClick={() => void resign()}
-                  className="btn-ghost !px-3 !py-1 text-xs"
-                >
-                  Rendirse
-                </button>
-              </>
+            {isSpectator && !isFinished ? null : !isFinished && !isWaitingRival ? (
+              <button
+                type="button"
+                onClick={() => void resign()}
+                className="btn-ghost !px-3 !py-1 text-xs"
+              >
+                Rendirse
+              </button>
             ) : isFinished ? (
               <button type="button" onClick={() => navigate('/')} className="btn-primary !px-3 !py-1 text-xs">
                 Salir
@@ -1615,33 +2114,81 @@ export function MatchPage() {
           </div>
         </div>
 
-        {/* Fila: info dimensión (izq) + tablero (centro) */}
-        <div className="flex min-h-0 flex-1 items-stretch gap-4 lg:gap-6">
+        {/* Fila: info dimensión (izq) + tablero (centro) + spacer der. equilibrado */}
+        <div className="relative flex min-h-0 flex-1 items-stretch gap-4 lg:gap-6">
           {/* Panel dimensión — izquierda, legible */}
           <aside className="hidden w-[min(100%,220px)] shrink-0 flex-col justify-center sm:flex lg:w-[240px]">
             <p className="font-label text-[10px] uppercase tracking-[0.18em] text-[var(--color-primary)]">
-              {isWaitingRival ? 'Reto' : `Ciclo ${match.cycle_index}`}
+              {isSpectator
+                ? 'Espectando'
+                : isWaitingRival
+                  ? match.mode === 'custom'
+                    ? 'Sala personalizada'
+                    : 'Reto'
+                  : `Ciclo ${match.cycle_index}`}
             </p>
             <h1 className="font-display mt-1 text-xl leading-tight text-[var(--color-ink)] lg:text-2xl">
-              {isWaitingRival
-                ? 'Esperando aceptación…'
-                : dimInfo[match.current_dimension]?.name ?? match.current_dimension}
+              {isWaitingRival ? 'Esperando rival…' : dimMeta.title}
             </h1>
             <p className="mt-3 text-sm leading-relaxed text-[var(--color-ink-muted)]">
               {isWaitingRival
-                ? 'El rival debe aceptar en Portal / inbox.'
-                : dimInfo[match.current_dimension]?.description ?? ''}
+                ? match.invite_code
+                  ? 'Comparte el código o espera a que acepten el reto.'
+                  : 'Esperando a que el rival acepte la invitación.'
+                : dimMeta.blurb}
             </p>
+            {isWaitingRival ? (
+              <div className="panel mt-3 space-y-2 p-3">
+                {match.invite_code ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-mono text-2xl tracking-[0.22em] text-[var(--color-primary)]">
+                      {match.invite_code}
+                    </span>
+                    <button
+                      type="button"
+                      className="btn-ghost !px-2 !py-1 text-xs"
+                      onClick={() => {
+                        void navigator.clipboard?.writeText(match.invite_code ?? '').then(() => {
+                          setCodeCopied(true)
+                          window.setTimeout(() => setCodeCopied(false), 1600)
+                        })
+                      }}
+                    >
+                      {codeCopied ? 'Copiado' : 'Copiar'}
+                    </button>
+                  </div>
+                ) : null}
+                <p className="font-label text-[10px] uppercase tracking-wider text-[var(--color-ink-muted)]">
+                  {Math.round((match.time_control_s || 300) / 60)} min
+                  {' · '}
+                  {match.allow_spectators === false ? 'Sin espectadores' : 'Espectadores permitidos'}
+                </p>
+                {invitedUsername ? (
+                  <p className="text-xs text-[var(--color-ink)]">
+                    Invitación enviada a{' '}
+                    <span className="font-medium">@{invitedUsername}</span>
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
             {!isWaitingRival ? (
               <p className="font-label mt-4 text-[10px] uppercase tracking-[0.14em] text-[var(--color-ink-muted)]">
                 {match.moves_in_phase}/{match.moves_per_phase} mov.
                 {match.mode === 'bot' ? ' · vs RogueBot' : ''}
+                {match.mode === 'custom' ? ' · personalizada' : ''}
                 {match.phase === 'shop' || match.status === 'shop' ? ' · mercado' : ''}
+                {isSpectator ? ' · solo lectura' : ''}
               </p>
             ) : null}
             {(you as MatchPlayer & { giratiempo_active?: boolean })?.giratiempo_active ? (
               <p className="mt-3 text-xs leading-snug text-[var(--color-primary)]">
                 Giratiempo: movimiento extra este turno (máx. 1 captura).
+              </p>
+            ) : null}
+            {(state.spectators?.length ?? 0) > 0 ? (
+              <p className="font-label mt-3 text-[10px] uppercase tracking-[0.14em] text-[var(--color-ink-muted)]">
+                {state.spectators.length}{' '}
+                {state.spectators.length === 1 ? 'espectador' : 'espectadores'}
               </p>
             ) : null}
           </aside>
@@ -1651,9 +2198,7 @@ export function MatchPage() {
             {/* Móvil: título corto de dimensión */}
             <div className="w-full shrink-0 text-center sm:hidden">
               <h1 className="font-display text-base text-[var(--color-ink)]">
-                {isWaitingRival
-                  ? 'Esperando…'
-                  : dimInfo[match.current_dimension]?.name ?? match.current_dimension}
+                {isWaitingRival ? 'Esperando…' : dimMeta.title}
               </h1>
             </div>
 
@@ -1663,7 +2208,7 @@ export function MatchPage() {
               }`}
             >
               {/* Reloj rival */}
-              <div className="flex items-center justify-between pb-1.5 font-label text-xs uppercase tracking-wider text-[var(--color-ink-muted)]">
+              <div className="flex items-center justify-between gap-2 pb-1.5 font-label text-xs uppercase tracking-wider text-[var(--color-ink-muted)]">
                 <span className={clocks.runningFor === rivalColor ? 'text-[var(--color-primary)]' : ''}>
                   {rivalPlayer?.display_name ?? '…'}
                   {remoteDrag?.active ? ' · moviendo…' : ''}
@@ -1680,46 +2225,68 @@ export function MatchPage() {
                 </span>
               </div>
 
-              <Chessboard
-                options={{
-                  id: `board-${match.id}`,
-                  position: displayFen,
-                  boardOrientation: you?.color === 'black' ? 'black' : 'white',
-                  allowDragging:
-                    yourTurn && !busy && !inShopPhase && !isFinished && !optimisticFen && !aim,
-                  animationDurationInMs: 280,
-                  squareStyles: dragSquareStyles,
-                  onSquareClick: ({ square }) => {
-                    if (square) onBoardSquareClick(square)
-                  },
-                  onPieceDrag: ({ piece, square }) => {
-                    if (aim || !square) return
-                    startLocalDrag(square, piece.pieceType)
-                  },
-                  onMouseOverSquare: ({ square }) => {
-                    if (localDrag.current) hoverLocalDrag(square)
-                  },
-                  onPieceDragCancel: () => {
-                    endLocalDrag()
-                  },
-                  onPieceDrop: ({ sourceSquare, targetSquare }) => {
-                    if (aim) return false
-                    return onPieceDrop({ sourceSquare, targetSquare })
-                  },
-                  boardStyle: {
-                    borderRadius: '4px',
-                    boxShadow: '0 12px 40px rgba(115,92,0,0.08)',
-                    cursor: aim ? 'crosshair' : undefined,
-                  },
-                  lightSquareStyle: { backgroundColor: '#f5f4ef' },
-                  darkSquareStyle: { backgroundColor: '#d0c5af' },
-                }}
-              />
+              <div className={`rc-board-stage rc-board-stage--${dimMeta.id} relative`}>
+                <SpectatorReactionColumns
+                  events={spectatorEmojis}
+                  boardOrientation={boardOrientation}
+                />
+                <JokerClockFx event={clockFx} />
+                <Chessboard
+                  options={{
+                    id: `board-${match.id}`,
+                    position: displayFen,
+                    boardOrientation,
+                    allowDragging:
+                      !isSpectator &&
+                      yourTurn &&
+                      !busy &&
+                      !inShopPhase &&
+                      !isFinished &&
+                      !optimisticFen &&
+                      !aim,
+                    animationDurationInMs: optimisticFen ? 0 : 280,
+                    squareStyles: dragSquareStyles,
+                    pieces: dimPieces,
+                    onSquareClick: ({ square }) => {
+                      if (isSpectator) return
+                      if (square) onBoardSquareClick(square)
+                    },
+                    onPieceDrag: ({ piece, square }) => {
+                      if (isSpectator || aim || !square) return
+                      startLocalDrag(square, piece.pieceType)
+                    },
+                    onMouseOverSquare: ({ square }) => {
+                      if (localDrag.current) hoverLocalDrag(square)
+                    },
+                    onPieceDragCancel: () => {
+                      endLocalDrag()
+                    },
+                    onPieceDrop: ({ sourceSquare, targetSquare }) => {
+                      if (isSpectator || aim) return false
+                      return onPieceDrop({ sourceSquare, targetSquare })
+                    },
+                    boardStyle: {
+                      borderRadius: '4px',
+                      boxShadow: dimMeta.board.frame
+                        ? `0 0 0 1px ${dimMeta.board.frame}, 0 18px 50px rgba(0,0,0,0.35)`
+                        : '0 12px 40px rgba(115,92,0,0.08)',
+                      cursor: aim ? 'crosshair' : undefined,
+                    },
+                    lightSquareStyle: { backgroundColor: dimMeta.board.light },
+                    darkSquareStyle: { backgroundColor: dimMeta.board.dark },
+                  }}
+                />
+                <JokerFxOverlay
+                  orientation={boardOrientation}
+                  aim={jokerAimAura}
+                  burst={jokerBurst}
+                />
+              </div>
 
               {/* Reloj propio */}
-              <div className="flex items-center justify-between pt-1.5 font-label text-xs uppercase tracking-wider text-[var(--color-ink-muted)]">
+              <div className="flex items-center justify-between gap-2 pt-1.5 font-label text-xs uppercase tracking-wider text-[var(--color-ink-muted)]">
                 <span className={clocks.runningFor === myColor ? 'text-[var(--color-primary)]' : ''}>
-                  {myPlayer?.display_name ?? 'Tú'}
+                  {myPlayer?.display_name ?? (isSpectator ? (myColor === 'white' ? 'Blancas' : 'Negras') : 'Tú')}
                   {yourTurn ? ' · tu turno' : ''}
                   {!clocks.runningFor && match.status === 'active' && yourTurn
                     ? ' · reloj espera 1ª jugada'
@@ -1738,56 +2305,125 @@ export function MatchPage() {
               </div>
             </div>
 
-            {/* Comodines */}
-            <div className="flex shrink-0 items-center gap-2 pt-0.5">
-              {yourInv.map((item) =>
-                item.joker ? (
-                  <JokerCard
-                    key={item.id}
-                    joker={item.joker as Joker}
-                    size={96}
-                    disabled={busy || isFinished || inShopPhase || !yourTurn}
-                    selected={aim?.inventoryId === item.id}
-                    onClick={() => {
-                      if (inShopPhase || !yourTurn) return
-                      if (aim?.inventoryId === item.id) {
-                        setAim(null)
-                        return
-                      }
-                      beginJokerUse(item.id, item.joker as Joker)
-                    }}
-                  />
-                ) : null,
-              )}
-              {Array.from({ length: Math.max(0, (you?.inventory_slots ?? 3) - yourInv.length) }).map(
-                (_, i) => (
-                  <div
-                    key={`slot-${i}`}
-                    className="flex items-center justify-center rounded border border-dashed border-[var(--color-outline-soft)]/60 text-[var(--color-ink-muted)]/50"
-                    style={{ width: 96, height: Math.round(96 * 1.4) }}
-                    aria-hidden
-                  >
-                    <span className="font-label text-[9px] uppercase tracking-wider">Vacío</span>
-                  </div>
-                ),
-              )}
-            </div>
+            {/* Comodines — ocultos en modo espectador */}
+            {!isSpectator ? (
+              <div className="flex shrink-0 items-center gap-2 pt-0.5">
+                <AnimatePresence mode="popLayout">
+                  {yourInv.map((item) =>
+                    item.joker ? (
+                      <motion.div
+                        key={item.id}
+                        layout
+                        initial={{ opacity: 1, scale: 1, y: 0, rotate: 0, filter: 'blur(0px)' }}
+                        animate={
+                          vanishingInvId === item.id
+                            ? {
+                                opacity: 0,
+                                scale: 0.52,
+                                y: 32,
+                                rotate: 10,
+                                filter: 'blur(6px)',
+                              }
+                            : { opacity: 1, scale: 1, y: 0, rotate: 0, filter: 'blur(0px)' }
+                        }
+                        exit={{
+                          opacity: 0,
+                          scale: 0.5,
+                          y: 24,
+                          filter: 'blur(4px)',
+                        }}
+                        transition={{ duration: 0.2, ease: easeOut }}
+                        className="origin-bottom"
+                      >
+                        <JokerCard
+                          joker={item.joker as Joker}
+                          size={96}
+                          darkTooltip={darkDim}
+                          disabled={
+                            busy ||
+                            isFinished ||
+                            inShopPhase ||
+                            !yourTurn ||
+                            vanishingInvId === item.id
+                          }
+                          selected={aim?.inventoryId === item.id}
+                          onClick={() => {
+                            if (inShopPhase || !yourTurn) return
+                            if (aim?.inventoryId === item.id) {
+                              setAim(null)
+                              return
+                            }
+                            beginJokerUse(item.id, item.joker as Joker)
+                          }}
+                        />
+                      </motion.div>
+                    ) : null,
+                  )}
+                </AnimatePresence>
+                {Array.from({ length: Math.max(0, (you?.inventory_slots ?? 3) - yourInv.length) }).map(
+                  (_, i) => (
+                    <motion.div
+                      key={`slot-${i}`}
+                      layout
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="flex items-center justify-center rounded border border-dashed border-[var(--color-outline-soft)]/60 text-[var(--color-ink-muted)]/50"
+                      style={{ width: 96, height: Math.round(96 * 1.4) }}
+                      aria-hidden
+                    >
+                      <span className="font-label text-[9px] uppercase tracking-wider">Vacío</span>
+                    </motion.div>
+                  ),
+                )}
+              </div>
+            ) : null}
 
             <p className="h-4 shrink-0 truncate text-center text-[11px] text-[var(--color-ink-muted)]">
-              {blockedSquares.size > 0
-                ? 'Casillas oscuras/rojas: quemadas o en ruina — el caballo sí salta'
-                : inShopPhase
-                  ? isShopWaiting
-                    ? `Esperando rival · ${Math.ceil(shopLeftMs / 1000)}s`
-                    : `Mercado abierto · ${Math.ceil(shopLeftMs / 1000)}s`
-                  : ''}
+              {isSpectator
+                ? 'Modo espectador · solo lectura'
+                : blockedSquares.size > 0
+                  ? 'Casillas oscuras/rojas: quemadas o en ruina — el caballo sí salta'
+                  : inShopPhase
+                    ? isShopWaiting
+                      ? `Esperando rival · ${Math.ceil(shopLeftMs / 1000)}s`
+                      : `Mercado abierto · ${Math.ceil(shopLeftMs / 1000)}s`
+                    : ''}
             </p>
           </div>
 
-          {/* Spacer derecho para equilibrar el panel izquierdo en desktop */}
-          <div className="hidden w-[min(100%,220px)] shrink-0 lg:block lg:w-[240px]" aria-hidden />
+          {/* Spacer derecho = mismo ancho que el panel izq → tablero siempre centrado */}
+          <div
+            className="hidden w-[min(100%,220px)] shrink-0 sm:block lg:w-[240px]"
+            aria-hidden
+          />
+
+          <MatchMascotCoach
+            dimensionId={dimMeta.id}
+            open={showMatchBoard && !isWaitingRival && !isFinished}
+            dark={darkDim}
+          />
         </div>
       </div>
+
+      {isSpectator && !isFinished ? (
+        <div className="fixed right-3 bottom-3 z-40 flex items-center gap-0.5 border border-[var(--color-outline-soft)] bg-[var(--color-surface)]/95 px-2 py-1.5 shadow-lg backdrop-blur-sm">
+          <span className="font-label mr-1.5 text-[9px] uppercase tracking-wider text-[var(--color-ink-muted)]">
+            {emojiCooldownLeft > 0 ? `${Math.ceil(emojiCooldownLeft / 1000)}s` : 'Reaccionar'}
+          </span>
+          {SPECTATOR_REACTIONS.map((emoji) => (
+            <button
+              key={emoji}
+              type="button"
+              title={`Reaccionar con ${emoji}`}
+              disabled={emojiCooldownLeft > 0}
+              className="p-1 transition hover:-translate-y-0.5 hover:bg-[var(--color-primary)]/10 disabled:opacity-30"
+              onClick={() => void sendSpectatorEmoji(emoji)}
+            >
+              <PixelEmoji emoji={emoji} size={22} res={14} />
+            </button>
+          ))}
+        </div>
+      ) : null}
     </PageTransition>
   )
 }

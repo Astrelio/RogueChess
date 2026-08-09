@@ -32,9 +32,10 @@ Docs: https://docs.useportal.co/
 ### Mensajes (match)
 - **`match_dirty`** (persistente) → peers hacen refetch REST
 - **`match_over`** (persistente) → fin de partida (`result`, `winner_id`, fen); refetch + overlay victoria/derrota
-- **`match_board`** (ephemeral) → pulso FEN + `clock_running_for` + tiempos (≤2KB); `preview: true` = solo FEN (no reloj)
+- **`match_board`** (ephemeral) → pulso FEN + `clock_running_for` + tiempos + `current_dimension` (≤2KB); `preview: true` = solo FEN (no reloj)
+- Tras tienda→grieta: el pulso lleva la dimensión; el refetch Neon se fuerza (sin throttle 200ms) para no quedarse con la dim anterior
 - **`match_clocks`** (ephemeral) → tiempos + `clock_running_for`
-- Publish: **board + ext + dirty en paralelo**; **no** se publican previews optimistas (solo UI local)
+- Publish: **board + ext + dirty en paralelo**; previews de comodín sí (FEN vía `match_board` preview + `match_joker_fx.fen`)
 - Anti-stale: progreso cycle/phase/moves (action < shop < next cycle); GET fuera de orden se descarta
 - Cambio de fase (tienda↔acción) via `match_board` + dirty → UI inmediata + refetch Neon (inventario)
 - Metadata del canal match: `joinedAt` estable (evita “channel already created with different options”)
@@ -43,25 +44,39 @@ Docs: https://docs.useportal.co/
 - Tienda: 60s (`shop_ends_at`); `shop_ready` por jugador; wait UI + peek tablero; bot auto-ready
 - Safety poll: ~1.2s si Portal no ready; ~7s si ready (por si el WS no entrega)
 - Tienda: dismiss por `cycle_index` para no reabrir por buy/ext stale; modal de fase; cierre optimista
-- Comodines: preview FEN + destello (Aparición / Avada / Morsmordre) mientras llega REST
+- Comodines: preview FEN + destello (Aparición / Avada / Morsmordre / Multijugos) + publish Portal al castear
 - Fix buy (`ply` desde match_moves); fix superlike (`sl.to_profile_id`)
 - Drag live + board pulse optimista (sin dirty prematuro)
 - Overlay de victoria / derrota / tablas
+- **`spectator_emoji`** (persistente + dirty) → reacciones de espectador (`emoji`, `targetColor`, `emojiId`); Neon valida cooldown vía REST; `recent_emojis` en estado como respaldo por poll
+
+### Fase 3 — espectadores + ranking en vivo
+- REST: `POST /matches/:id/spectate`, `POST /matches/:id/spectator-emoji`; perfil `liveMatch` (`v_match_live`); leaderboard `is_in_match` / `is_searching`
+- Portal lobby: ephemeral **`ranking_pulse`** al entrar/salir de cola o partida; RankingPage refresca badges
+- Metadata lobby: `playing` / `searching` → DuelBadge / SearchingBadge
+- UI: Espectar desde perfil (`?cheer=username`), columnas de reacción + paleta PixelEmoji
+
+### Fase 4 — salas personalizadas
+- REST: `POST /matches/custom`, `POST /matches/join-by-code`, `GET /matches/invites/pending`; `/challenge` acepta `mode`/`allowSpectators`/`inviteUsername`
+- Portal: challenge broadcast + inbox; bandeja Neon (`getPendingInvites`) si el WS no empuja
+- UI: `CustomMatchModal` en Landing; waiting room muestra `invite_code` copiable
 
 ### Presence
-- Metadata en lobby (username, mood, uid, searching) y en partida (color, role)
+- Metadata en lobby (username, mood, uid, searching, playing) y en partida (color, role player|spectator)
 - Chip en MatchPage: status Portal, rival en canal, activity `shopping`
 - Badge inbox en avatar del Shell
 
 ### Inbox / retos
 - `useInbox` + toasts con **Aceptar** → `POST /matches/:id/join`
-- Ranking / perfil: **Retar** → `POST /matches/challenge` + `challenge` Portal (`matchId`)
+- Ranking / perfil: **Retar** → `POST /matches/challenge` (mode custom) + `challenge` Portal (`matchId`)
 - Host en `waiting` hace poll hasta que el rival acepta
+- Respaldo Neon: poll `GET /matches/invites/pending` → toasts/invites en `usePortalInbox`
 
 ### Activity / emotes
 - `sendActivity('shopping')` en fase tienda
 - Emotes efímeros `match_emote` (👍😮🔥♟️) en partida
 - `shop_ready` ephemeral al marcar listo en tienda
+- `match_joker_fx` ephemeral al castear (code + squares + `fen?`) → peers FX + tablero preview sin esperar Neon
 
 ### Config / deploy
 - `portal.config.ts` — auth JWKS Firebase, canales, notify, extension

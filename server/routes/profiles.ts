@@ -8,11 +8,24 @@ export const profilesRouter = Router()
 profilesRouter.get('/:username', async (req, res, next) => {
   try {
     const rows = await sql`SELECT * FROM fn_get_profile_by_username(${req.params.username})`
-    if (!rows[0]) {
+    const profile = rows[0] as { id: string; presence?: string } | undefined
+    if (!profile) {
       res.status(404).json({ error: 'not found' })
       return
     }
-    res.json({ profile: rows[0] })
+
+    // Partida en vivo para el botón "Espectar". No dependemos de presence
+    // (el heartbeat la puede pisar con 'online'): v_match_live es la autoridad.
+    const live = await sql`
+      SELECT id, allow_spectators FROM v_match_live
+      WHERE (white_id = ${profile.id}::uuid OR black_id = ${profile.id}::uuid)
+        AND status IN ('active', 'shop', 'dimension_reveal')
+      ORDER BY created_at DESC
+      LIMIT 1
+    `
+    const liveMatch = (live[0] as Record<string, unknown>) ?? null
+
+    res.json({ profile, liveMatch })
   } catch (err) {
     next(err)
   }
@@ -74,12 +87,27 @@ profilesRouter.post('/super-like', requireAuth, async (req, res, next) => {
     const rows = await sql`
       SELECT * FROM fn_give_super_like(${req.user!.uid}, ${body.toUsername})
     `
-    const result = rows[0] as { ok: boolean; message: string; to_profile_id: string | null; popularity_score: number | null }
+    const result = rows[0] as {
+      ok: boolean
+      message: string
+      liked_profile_id?: string | null
+      to_profile_id?: string | null
+      popularity?: number | null
+      popularity_score?: number | null
+    }
     if (!result.ok) {
-      res.status(409).json(result)
+      res.status(409).json({
+        ok: false,
+        message: result.message,
+        popularity_score: result.popularity ?? result.popularity_score ?? null,
+      })
       return
     }
-    res.json(result)
+    res.json({
+      ok: true,
+      message: result.message,
+      popularity_score: result.popularity ?? result.popularity_score ?? null,
+    })
   } catch (err) {
     next(err)
   }

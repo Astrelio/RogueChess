@@ -7,11 +7,19 @@ import { PageTransition } from '@/components/PageTransition'
 import { riseItem, stagger } from '@/lib/motion'
 import type { Developer } from '@/types'
 
+const HEART_MSG: Record<string, string> = {
+  ok: '¡Gracias!',
+  'already hearted': 'Ya le diste me gusta a este desarrollador',
+  'sender not found': 'Inicia sesión para dar me gusta',
+  'developer not found': 'Desarrollador no encontrado',
+}
+
 export function DevsPage() {
   const { getToken, user } = useAuth()
   const [devs, setDevs] = useState<Developer[]>([])
   const [error, setError] = useState<string | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
+  const [busySlug, setBusySlug] = useState<string | null>(null)
 
   async function load() {
     const { developers } = await api.developers()
@@ -24,17 +32,22 @@ export function DevsPage() {
 
   async function heart(slug: string) {
     setMsg(null)
+    setBusySlug(slug)
     try {
       const token = await getToken()
       if (!token) {
-        setMsg('Inicia sesión para enviar un supercorazón')
+        setMsg('Inicia sesión para dar me gusta')
         return
       }
       const res = await api.heartDeveloper(token, slug)
-      setMsg(res.message === 'ok' ? '¡Gracias!' : res.message)
+      setMsg(HEART_MSG[res.message] ?? (res.message === 'ok' ? '¡Gracias!' : res.message))
       await load()
     } catch (err) {
-      setMsg(err instanceof Error ? err.message : 'Ya enviaste uno o error')
+      const raw = err instanceof Error ? err.message : 'Error'
+      setMsg(HEART_MSG[raw] ?? raw)
+      await load().catch(() => {})
+    } finally {
+      setBusySlug(null)
     }
   }
 
@@ -44,8 +57,8 @@ export function DevsPage() {
         <motion.h1 variants={riseItem} className="font-display text-2xl text-[var(--color-primary)] sm:text-3xl">
           Equipo
         </motion.h1>
-        <motion.p variants={riseItem} className="mt-2 max-w-lg text-sm text-[var(--color-ink-muted)]">
-          Un supercorazón por desarrollador. Sin spam, solo gratitud.
+        <motion.p variants={riseItem} className="mt-2 max-w-xl text-sm text-[var(--color-ink-muted)]">
+          Quienes armaron RogueChess. Un me gusta por persona — sin spam, solo gratitud.
         </motion.p>
         {msg ? (
           <motion.p variants={riseItem} className="mt-3 text-sm text-[var(--color-online)]">
@@ -54,34 +67,58 @@ export function DevsPage() {
         ) : null}
         {error ? <p className="mt-4 text-sm text-[var(--color-error)]">{error}</p> : null}
 
-        <motion.ul variants={stagger} className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <motion.ul
+          variants={stagger}
+          className="mt-8 grid gap-5 sm:grid-cols-2"
+        >
           {devs.map((d) => (
             <motion.li
               key={d.id}
               variants={riseItem}
-              whileHover={{ y: -4 }}
+              whileHover={{ y: -3 }}
               transition={{ type: 'spring', stiffness: 320, damping: 24 }}
-              className="panel p-4"
+              className="panel flex flex-col gap-4 p-4 sm:flex-row sm:items-start"
             >
-              <h2 className="font-display text-lg text-[var(--color-ink)]">{d.name}</h2>
-              <p className="font-label mt-1 text-[10px] uppercase tracking-[0.14em] text-[var(--color-primary)]">
-                {d.role}
-              </p>
-              <p className="mt-3 text-sm text-[var(--color-ink-muted)]">{d.bio}</p>
-              <div className="mt-4 flex items-center justify-between">
-                <span className="flex items-center gap-1 text-sm text-[var(--color-ink-muted)]">
-                  <Heart className="h-3.5 w-3.5 text-[var(--color-primary)]" /> {d.heart_count}
-                </span>
-                <motion.button
-                  type="button"
-                  disabled={!user}
-                  whileHover={{ scale: user ? 1.03 : 1 }}
-                  whileTap={{ scale: user ? 0.97 : 1 }}
-                  onClick={() => void heart(d.slug)}
-                  className="font-label border border-[var(--color-primary)]/40 px-3 py-1.5 text-[10px] uppercase tracking-wider text-[var(--color-primary)] disabled:opacity-40"
-                >
-                  Supercorazón
-                </motion.button>
+              <div className="mx-auto h-28 w-28 shrink-0 overflow-hidden rounded-full border border-[var(--color-outline-soft)]/60 bg-[var(--color-surface-low)] shadow-[0_8px_24px_rgba(115,92,0,0.12)] sm:mx-0 sm:h-32 sm:w-32">
+                {d.avatar_url ? (
+                  <img
+                    src={d.avatar_url}
+                    alt={d.name}
+                    width={128}
+                    height={128}
+                    className="h-full w-full object-cover"
+                    loading="lazy"
+                    decoding="async"
+                  />
+                ) : (
+                  <div className="font-display flex h-full w-full items-center justify-center text-2xl text-[var(--color-primary)]">
+                    {d.name.trim().charAt(0).toUpperCase()}
+                  </div>
+                )}
+              </div>
+
+              <div className="min-w-0 flex-1 text-center sm:text-left">
+                <h2 className="font-display text-lg text-[var(--color-ink)] sm:text-xl">{d.name}</h2>
+                <p className="font-label mt-1 text-[10px] uppercase tracking-[0.14em] text-[var(--color-primary)]">
+                  {d.role}
+                </p>
+                <p className="mt-2 text-sm leading-relaxed text-[var(--color-ink-muted)]">{d.bio}</p>
+                <div className="mt-4 flex items-center justify-center gap-3 sm:justify-start">
+                  <span className="flex items-center gap-1.5 text-sm text-[var(--color-ink-muted)]">
+                    <Heart className="h-3.5 w-3.5 fill-[var(--color-primary)] text-[var(--color-primary)]" />
+                    {d.heart_count}
+                  </span>
+                  <motion.button
+                    type="button"
+                    disabled={!user || busySlug === d.slug}
+                    whileHover={{ scale: user ? 1.03 : 1 }}
+                    whileTap={{ scale: user ? 0.97 : 1 }}
+                    onClick={() => void heart(d.slug)}
+                    className="font-label cursor-pointer border border-[var(--color-primary)]/40 px-3 py-1.5 text-[10px] uppercase tracking-wider text-[var(--color-primary)] transition hover:bg-[var(--color-primary)]/10 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {busySlug === d.slug ? '…' : 'Me gusta'}
+                  </motion.button>
+                </div>
               </div>
             </motion.li>
           ))}

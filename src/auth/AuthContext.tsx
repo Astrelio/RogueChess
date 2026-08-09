@@ -52,9 +52,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const getToken = useCallback(async () => {
     if (!user) return null
-    const t = await getIdToken(user)
-    setToken(t)
-    return t
+    try {
+      const t = await user.getIdToken(false)
+      setToken(t)
+      return t
+    } catch {
+      const t = await user.getIdToken(true)
+      setToken(t)
+      return t
+    }
   }, [user])
 
   useEffect(() => {
@@ -81,14 +87,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [sync])
 
   useEffect(() => {
-    if (!user || !token) return
-    const tick = () => {
-      void api.heartbeat(token, 'online').catch(() => undefined)
+    if (!user) return
+    const tick = async () => {
+      try {
+        const t = await user.getIdToken(true)
+        setToken(t)
+        await api.heartbeat(t, 'online')
+      } catch {
+        /* silencioso */
+      }
     }
-    tick()
-    const id = window.setInterval(tick, 60_000)
+    void tick()
+    const id = window.setInterval(() => void tick(), 60_000)
     return () => window.clearInterval(id)
-  }, [user, token])
+  }, [user])
 
   const value = useMemo<AuthState>(
     () => ({

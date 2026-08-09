@@ -5,15 +5,18 @@ import { api } from '@/lib/api'
 import { useAuth } from '@/auth/AuthContext'
 import { PageTransition } from '@/components/PageTransition'
 import { useChallengePlayer } from '@/hooks/useChallengePlayer'
+import { useSpectateMatch } from '@/hooks/useSpectateMatch'
 import { presenceLabel } from '@/lib/utils'
 import { riseItem, stagger } from '@/lib/motion'
-import type { Profile } from '@/types'
+import type { LiveMatchRef, Profile } from '@/types'
 
 export function PublicProfilePage() {
   const { username = '' } = useParams()
   const { getToken, user } = useAuth()
   const challenge = useChallengePlayer()
+  const spectator = useSpectateMatch()
   const [profile, setProfile] = useState<Profile | null>(null)
+  const [liveMatch, setLiveMatch] = useState<LiveMatchRef | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
 
@@ -21,8 +24,11 @@ export function PublicProfilePage() {
     let alive = true
     ;(async () => {
       try {
-        const { profile: p } = await api.getProfile(username)
-        if (alive) setProfile(p)
+        const { profile: p, liveMatch: live } = await api.getProfile(username)
+        if (alive) {
+          setProfile(p)
+          setLiveMatch(live ?? null)
+        }
       } catch (err) {
         if (alive) setError(err instanceof Error ? err.message : 'No encontrado')
       }
@@ -37,15 +43,28 @@ export function PublicProfilePage() {
     try {
       const token = await getToken()
       if (!token) {
-        setMsg('Inicia sesión')
+        setMsg('Inicia sesión para dar me gusta')
         return
       }
       const res = await api.superLike(token, profile.username)
-      setMsg(`Popularidad: ${res.popularity_score}`)
+      if (res.message === 'ok') {
+        setMsg(`Me gusta enviado · Popularidad: ${res.popularity_score}`)
+      } else if (res.message === 'already liked today') {
+        setMsg('Ya le diste me gusta hoy')
+      } else {
+        setMsg(res.message)
+      }
       const { profile: p } = await api.getProfile(username)
       setProfile(p)
     } catch (err) {
-      setMsg(err instanceof Error ? err.message : 'Error')
+      const raw = err instanceof Error ? err.message : 'Error'
+      setMsg(
+        raw === 'already liked today'
+          ? 'Ya le diste me gusta hoy'
+          : raw === 'cannot like yourself'
+            ? 'No puedes darte me gusta a ti mismo'
+            : raw,
+      )
     }
   }
 
@@ -82,10 +101,23 @@ export function PublicProfilePage() {
           </motion.p>
         ) : null}
         <motion.p variants={riseItem} className="mt-4 text-sm text-[var(--color-ink-muted)]">
-          {profile.wins}W / {profile.losses}L / {profile.draws}D · ♥ {profile.popularity_score}
+          {profile.wins}V / {profile.losses}D / {profile.draws}E · ♥ {profile.popularity_score}
         </motion.p>
         {user ? (
           <div className="mt-6 flex flex-wrap gap-3">
+            {liveMatch?.allow_spectators && profile.firebase_uid !== user.uid ? (
+              <motion.button
+                type="button"
+                variants={riseItem}
+                whileHover={{ y: -1 }}
+                whileTap={{ scale: 0.98 }}
+                disabled={spectator.busy}
+                onClick={() => void spectator.spectate(liveMatch.id, profile.username)}
+                className="btn-primary disabled:opacity-50"
+              >
+                {spectator.busy ? 'Entrando…' : 'Espectar partida'}
+              </motion.button>
+            ) : null}
             <motion.button
               type="button"
               variants={riseItem}
@@ -95,7 +127,7 @@ export function PublicProfilePage() {
               onClick={() => void challenge.challengeUsername(profile.username)}
               className="btn-primary disabled:opacity-50"
             >
-              {challenge.busy ? 'Retando…' : 'Retar vía Portal'}
+              {challenge.busy ? 'Retando…' : 'Retar'}
             </motion.button>
             <motion.button
               type="button"
@@ -105,12 +137,13 @@ export function PublicProfilePage() {
               onClick={() => void like()}
               className="btn-ghost"
             >
-              Super like
+              Me gusta
             </motion.button>
           </div>
         ) : null}
         {msg ? <p className="mt-3 text-sm text-[var(--color-online)]">{msg}</p> : null}
         {challenge.error ? <p className="mt-3 text-sm text-[var(--color-error)]">{challenge.error}</p> : null}
+        {spectator.error ? <p className="mt-3 text-sm text-[var(--color-error)]">{spectator.error}</p> : null}
       </motion.section>
     </PageTransition>
   )

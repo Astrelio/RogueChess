@@ -386,10 +386,11 @@ export function applyJoker(
         square,
         wasPawn: true,
         multijugosQueen: true,
-        multijugosDiesPly: ctx.ply + 2,
+        // Vive tu jugada con ella; colapsa al ceder el turno (ply+1)
+        multijugosDiesPly: ctx.ply + 1,
         payload: { created_fullmove: fullmove },
       })
-      ops.events.push(`Poción multijugos: el peón de ${square} es Reina por 1 turno`)
+      ops.events.push(`Poción multijugos: el peón de ${square} es Reina por 1 jugada`)
       return done({ newFen: editedFen(chess) })
     }
 

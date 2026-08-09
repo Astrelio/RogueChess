@@ -1,0 +1,32 @@
+animaciones-roguechess — manifiesto
+====================================
+
+Docs
+- INTEGRACION.md
+- DEPENDENCIAS.md
+- PROMPT_CURSOR.md
+- MANIFEST.txt
+- snippets/MatchPage.wire.md
+
+CSS
+- css/animaciones.css
+
+Código fuente (copiar a RogueChess/src/...)
+- src/lib/jokerFx.ts
+- src/components/match/JokerFxOverlay.tsx
+- src/components/match/JokerClockFx.tsx
+- src/components/match/PhaseFlash.tsx
+- src/components/match/DimensionReveal.tsx
+
+Assets (copiar a RogueChess/public/dimensions/)
+- public/dimensions/dim-ruina.png
+- public/dimensions/dim-espejo.png
+- public/dimensions/dim-bluriel.png
+- public/dimensions/dim-gravitacional.png
+- public/dimensions/dim-sangre.png
+- public/dimensions/dim-mercado.png
+- public/dimensions/dim-fragilidad.png
+- public/dimensions/dim-primo.png
+
+Librería npm principal de animación: framer-motion (ver DEPENDENCIAS.md)
+Cálculo de casillas aim: chess.js (ver DEPENDENCIAS.md)

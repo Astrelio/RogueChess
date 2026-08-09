@@ -18,6 +18,8 @@ type Args = {
   onPieceDrag?: (drag: PieceDragPayload) => void
   onShopReady?: (p: import('@/lib/portal').ShopReadyPayload) => void
   onEmote?: (p: import('@/lib/portal').MatchEmotePayload) => void
+  onJokerFx?: (p: import('@/lib/portal').MatchJokerFxPayload) => void
+  onSpectatorEmoji?: (p: import('@/lib/portal').SpectatorEmojiPayload) => void
   /** Canal listo / reconectado → refetch Neon (fin de partida, late-join). */
   onChannelReady?: () => void
 }
@@ -35,6 +37,7 @@ function boardFromState(state: MatchState): MatchBoardSnapshot {
     phase: m.phase,
     cycle_index: m.cycle_index,
     moves_in_phase: m.moves_in_phase,
+    current_dimension: m.current_dimension,
     result: m.result ?? null,
     winner_id: m.winner_id ?? null,
     at: Date.now(),
@@ -54,6 +57,8 @@ export function useMatchRealtime({
   onPieceDrag,
   onShopReady,
   onEmote,
+  onJokerFx,
+  onSpectatorEmoji,
   onChannelReady,
 }: Args) {
   const channelId = portalReady && enabled && matchId ? matchChannelId(matchId) : undefined
@@ -67,12 +72,16 @@ export function useMatchRealtime({
   const onDragRef = useRef(onPieceDrag)
   const onShopReadyRef = useRef(onShopReady)
   const onEmoteRef = useRef(onEmote)
+  const onJokerFxRef = useRef(onJokerFx)
+  const onSpectatorEmojiRef = useRef(onSpectatorEmoji)
   const onReadyRef = useRef(onChannelReady)
   onDirtyRef.current = onDirty
   onBoardRef.current = onBoardPulse
   onDragRef.current = onPieceDrag
   onShopReadyRef.current = onShopReady
   onEmoteRef.current = onEmote
+  onJokerFxRef.current = onJokerFx
+  onSpectatorEmojiRef.current = onSpectatorEmoji
   onReadyRef.current = onChannelReady
 
   const markOwnAt = useCallback((at: number) => {
@@ -136,6 +145,16 @@ export function useMatchRealtime({
 
       if (content.type === 'match_emote') {
         onEmoteRef.current?.(content)
+        return
+      }
+
+      if (content.type === 'match_joker_fx') {
+        onJokerFxRef.current?.(content)
+        return
+      }
+
+      if (content.type === 'spectator_emoji') {
+        onSpectatorEmojiRef.current?.(content)
         return
       }
 
@@ -386,6 +405,66 @@ export function useMatchRealtime({
     [channelId, send],
   )
 
+  const publishJokerFx = useCallback(
+    async (payload: {
+      matchId: string
+      uid: string
+      code: string
+      squares: string[]
+      fen?: string
+    }) => {
+      if (!channelId) return
+      const at = Date.now()
+      markOwnAt(at)
+      await send({
+        ephemeral: true,
+        content: {
+          type: 'match_joker_fx',
+          ...payload,
+          at,
+        },
+      })
+    },
+    [channelId, send, markOwnAt],
+  )
+
+  /**
+   * Fan-out del emoji de espectador (ya validado en Neon vía REST).
+   * - spectator_emoji persistente: vía rápida visual + targetColor
+   * - dirty: fuerza refetch → recent_emojis (respaldo)
+   */
+  const publishSpectatorEmoji = useCallback(
+    async (payload: {
+      matchId: string
+      uid: string
+      username?: string
+      emoji: string
+      targetColor: 'white' | 'black'
+      emojiId?: string
+    }) => {
+      if (!channelId) return
+      const at = Date.now()
+      await Promise.allSettled([
+        send({
+          content: {
+            type: 'spectator_emoji',
+            ...payload,
+            at,
+          },
+        }),
+        send({
+          content: {
+            type: 'match_dirty',
+            matchId: payload.matchId,
+            reason: 'spectator_emoji',
+            at,
+          },
+        }),
+      ])
+    },
+    [channelId, send],
+  )
+
   return {
     ready: portalReady && Boolean(channelId),
     status,
@@ -399,5 +478,7 @@ export function useMatchRealtime({
     publishPieceDrag,
     publishShopReady,
     publishEmote,
+    publishJokerFx,
+    publishSpectatorEmoji,
   }
 }

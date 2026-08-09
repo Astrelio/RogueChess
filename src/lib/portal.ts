@@ -28,6 +28,8 @@ export type MatchBoardSnapshot = {
   phase: string
   cycle_index: number
   moves_in_phase: number
+  /** Dimensión actual (crítica tras tienda → grieta). */
+  current_dimension?: string
   at: number
   /** Preview optimista: solo FEN; no tocar relojes/turno. */
   preview?: boolean
@@ -74,9 +76,14 @@ export type ChallengePayload = {
   title: string
   fromUsername: string
   fromUid: string
+  /** Firebase uid del invitado. */
+  toUid?: string
+  /** Username del invitado (filtro de respaldo). */
+  toUsername?: string
   message?: string
   /** Partida waiting creada por el retador. */
   matchId?: string
+  at?: number
 }
 
 /** Señales de matchmaking en lobby:presence */
@@ -94,7 +101,14 @@ export type MatchReadyPayload = {
   at: number
 }
 
-export type LobbyPayload = ChallengePayload | LookingPayload | MatchReadyPayload
+/** Pulso de ranking en lobby: alguien entró/salió de partida o cola. */
+export type RankingPulsePayload = {
+  type: 'ranking_pulse'
+  at: number
+  reason?: string
+}
+
+export type LobbyPayload = ChallengePayload | LookingPayload | MatchReadyPayload | RankingPulsePayload
 
 /** Arrastre en vivo (ephemeral, alta frecuencia). */
 export type PieceDragPayload = {
@@ -127,6 +141,32 @@ export type MatchEmotePayload = {
   at: number
 }
 
+/** FX de comodín (ephemeral) — peers reproducen overlay/ritual/reloj. */
+export type MatchJokerFxPayload = {
+  type: 'match_joker_fx'
+  matchId: string
+  uid: string
+  code: string
+  squares: string[]
+  /** FEN post-cast (preview) para pintar tablero sin esperar dirty/REST. */
+  fen?: string
+  at: number
+}
+
+/** Emoji de espectador. Neon valida cooldown vía REST antes de publicar. */
+export type SpectatorEmojiPayload = {
+  type: 'spectator_emoji'
+  matchId: string
+  uid: string
+  username?: string
+  emoji: string
+  /** Color del jugador al que va la reacción (lado del tablero). */
+  targetColor: 'white' | 'black'
+  /** id de la fila en Neon: dedupe exacto con la entrega por polling. */
+  emojiId?: string
+  at: number
+}
+
 export type MatchChannelPayload =
   | MatchDirtyPayload
   | MatchOverPayload
@@ -135,3 +175,5 @@ export type MatchChannelPayload =
   | PieceDragPayload
   | ShopReadyPayload
   | MatchEmotePayload
+  | MatchJokerFxPayload
+  | SpectatorEmojiPayload

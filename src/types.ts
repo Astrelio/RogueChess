@@ -27,6 +27,12 @@ export type Profile = {
   updated_at: string
 }
 
+/** Partida en vivo de un perfil (para el botón Espectar). */
+export type LiveMatchRef = {
+  id: string
+  allow_spectators: boolean
+}
+
 export type LeaderboardEntry = {
   id: string
   username: string
@@ -46,6 +52,10 @@ export type LeaderboardEntry = {
   medal: Medal
   last_seen_at: string
   created_at: string
+  /** Calculado en la API (partida viva reciente). */
+  is_in_match?: boolean
+  /** En cola de matchmaking (y no en partida). */
+  is_searching?: boolean
 }
 
 export type Developer = {

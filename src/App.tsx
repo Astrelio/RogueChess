@@ -8,6 +8,9 @@ import { RankingPage } from '@/pages/RankingPage'
 import { ProfilePage } from '@/pages/ProfilePage'
 import { PublicProfilePage } from '@/pages/PublicProfilePage'
 import { DevsPage } from '@/pages/DevsPage'
+import { DimensionLabPage } from '@/pages/DimensionLabPage'
+import { JokerGalleryPage } from '@/pages/JokerGalleryPage'
+import { JokerLabPage } from '@/pages/JokerLabPage'
 import { MatchPage } from '@/pages/MatchPage'
 
 export default function App() {
@@ -23,6 +26,10 @@ export default function App() {
               <Route path="/perfil" element={<ProfilePage />} />
               <Route path="/u/:username" element={<PublicProfilePage />} />
               <Route path="/devs" element={<DevsPage />} />
+              <Route path="/comodines" element={<JokerGalleryPage />} />
+              <Route path="/lab" element={<DimensionLabPage />} />
+              <Route path="/lab/jokers" element={<JokerLabPage />} />
+              <Route path="/lab/:dimensionId" element={<DimensionLabPage />} />
               <Route path="/partida/:id" element={<MatchPage />} />
             </Routes>
           </Shell>

@@ -53,7 +53,7 @@ export function LoginPage() {
           {mode === 'login' ? 'Iniciar sesión' : 'Crear cuenta'}
         </motion.h1>
         <motion.p variants={riseItem} className="mt-2 text-sm text-[var(--color-ink-muted)]">
-          Obligatorio para jugar. El perfil se sincroniza con Neon al entrar.
+          Necesitas cuenta para jugar. Tu perfil se guarda al entrar.
         </motion.p>
 
         {!fb || !firebaseReady ? (

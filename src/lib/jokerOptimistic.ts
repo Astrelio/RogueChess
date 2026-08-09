@@ -57,6 +57,26 @@ export function previewRemovePieceFen(fen: string, square: string): string | nul
   return editedFen(chess)
 }
 
+/** Preview Multijugos: peón propio → dama en la misma casilla. */
+export function previewMultijugosFen(
+  fen: string,
+  square: string,
+  moverColor: 'white' | 'black',
+): string | null {
+  let chess: Chess
+  try {
+    chess = new Chess(fen)
+  } catch {
+    return null
+  }
+  const me = moverColor === 'white' ? 'w' : 'b'
+  const piece = chess.get(square as Square)
+  if (!piece || piece.color !== me || piece.type !== 'p') return null
+  chess.remove(square as Square)
+  chess.put({ type: 'q', color: me }, square as Square)
+  return editedFen(chess)
+}
+
 /**
  * Preview Morsmordre: la pieza enemiga retrocede (y puede aplastar una tuya).
  */

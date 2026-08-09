@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+﻿import { useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { easeOut } from '@/lib/motion'
@@ -8,6 +8,7 @@ type Props = {
   cycleIndex?: number
   /** Duración total visible antes de llamar onDone (ms). */
   durationMs?: number
+  dark?: boolean
   onDone: () => void
 }
 
@@ -18,6 +19,7 @@ export function ShopIntroOverlay({
   open,
   cycleIndex,
   durationMs = 1400,
+  dark,
   onDone,
 }: Props) {
   useEffect(() => {
@@ -39,7 +41,11 @@ export function ShopIntroOverlay({
         >
           <motion.div
             aria-hidden
-            className="absolute inset-0 bg-[color-mix(in_srgb,var(--color-ink)_42%,transparent)] backdrop-blur-[10px]"
+            className={
+              dark
+                ? 'absolute inset-0 bg-[color-mix(in_srgb,#050403_75%,transparent)] backdrop-blur-[10px]'
+                : 'absolute inset-0 bg-[color-mix(in_srgb,var(--color-ink)_42%,transparent)] backdrop-blur-[10px]'
+            }
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -59,7 +65,11 @@ export function ShopIntroOverlay({
 
           <div className="relative z-10 text-center">
             <motion.p
-              className="font-label text-[10px] uppercase tracking-[0.28em] text-[var(--color-primary-bright)]"
+              className={
+                dark
+                  ? 'font-label text-[10px] uppercase tracking-[0.28em] text-[#e9c349]'
+                  : 'font-label text-[10px] uppercase tracking-[0.28em] text-[var(--color-primary-bright)]'
+              }
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -6 }}
@@ -68,7 +78,11 @@ export function ShopIntroOverlay({
               {typeof cycleIndex === 'number' ? `Mercado · ciclo ${cycleIndex}` : 'Mercado'}
             </motion.p>
             <motion.h2
-              className="font-display mt-3 text-4xl text-[var(--color-primary-fixed)] sm:text-5xl"
+              className={
+                dark
+                  ? 'font-display mt-3 text-4xl text-[#f7f3ea] sm:text-5xl'
+                  : 'font-display mt-3 text-4xl text-[var(--color-primary-fixed)] sm:text-5xl'
+              }
               initial={{ opacity: 0, y: 18, scale: 0.96 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -10, scale: 0.98 }}

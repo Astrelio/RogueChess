@@ -48,7 +48,7 @@ export function multijugosShouldDie(f: PieceFlag, ctx: EngineContext, plyNow: nu
 
 /**
  * Quita del tablero las reinas Multijugos del color indicado cuyo plazo expiró.
- * GDD: viven 1 turno (jugada + respuesta rival); colapsan al volver el turno del dueño.
+ * Viven 1 jugada del dueño; colapsan al ceder el turno (o al iniciar su siguiente turno).
  */
 export function applyMultijugosCollapse(
   ctx: EngineContext,
@@ -90,6 +90,13 @@ export function fenWithSideToMove(fen: string, color: Color): string {
   const parts = fen.split(' ')
   if (parts.length < 2) return fen
   parts[1] = cjs(color)
+  // chess.js 1.x: EP solo es válido para el bando que mueve (blancas→rango 6, negras→3).
+  // Si solo cambiamos el turno y dejamos EP viejo → "Invalid FEN: illegal en-passant square".
+  if (parts.length >= 4 && parts[3] && parts[3] !== '-') {
+    const rank = parts[3][1]
+    const epOk = color === 'white' ? rank === '6' : rank === '3'
+    if (!epOk) parts[3] = '-'
+  }
   return parts.join(' ')
 }
 
@@ -712,17 +719,23 @@ export function applyPlayerMove(ctx: EngineContext, input: MoveInput): MoveResul
     ops.events.push('Giratiempo: puedes mover otra vez')
   }
 
-  // Multijugos: al pasar el turno al dueño (tras la respuesta del rival), la reina colapsa
-  // para que el tablero ya la muestre muerta antes de su siguiente acción.
+  // Multijugos: al ceder turno, colapsa la reina del que acaba de mover (1 jugada de vida).
+  // También colapsa la del rival si su plazo ya venció (p.ej. flags legacy ply+2).
   if (!keepTurn) {
     const nextColor: Color = fenAfter.split(' ')[1] === 'b' ? 'black' : 'white'
+    const ownCollapsed = applyMultijugosCollapse(
+      ctx,
+      chess,
+      ops,
+      ctx.moverColor,
+      ctx.ply + 1,
+    )
+    let nextCollapsed = false
     if (nextColor !== ctx.moverColor) {
-      const collapsed = applyMultijugosCollapse(ctx, chess, ops, nextColor, ctx.ply + 1)
-      if (collapsed) {
-        fenAfter = fenWithSideToMove(chess.fen(), nextColor)
-        // Recalcular jaque al rival ya no aplica; el jaque era al dueño del turno siguiente.
-        // Si la reina daba jaque, al morir el jaque desaparece — coherente con GDD post-respuesta.
-      }
+      nextCollapsed = applyMultijugosCollapse(ctx, chess, ops, nextColor, ctx.ply + 1)
+    }
+    if (ownCollapsed || nextCollapsed) {
+      fenAfter = fenWithSideToMove(chess.fen(), nextColor)
     }
   }
 
@@ -742,7 +755,19 @@ export function applyPlayerMove(ctx: EngineContext, input: MoveInput): MoveResul
 /** Jugadas legales bajo dimensión (para el bot y validaciones globales). */
 export function listLegalMoves(ctx: EngineContext): Move[] {
   const synced = fenWithSideToMove(ctx.fen, ctx.turnColor)
-  const chess = new Chess(synced)
+  let chess: Chess
+  try {
+    chess = new Chess(synced)
+  } catch {
+    try {
+      // Último recurso: FEN sin EP / sin derechos raros
+      const parts = synced.split(' ')
+      parts[3] = '-'
+      chess = new Chess(parts.join(' '))
+    } catch {
+      return []
+    }
+  }
   const vanilla = (chess.moves({ verbose: true }) as Move[]).filter((m) => {
     if (!checkMoveAgainstBoard(ctx, m).ok) return false
     // Re-validar jaque con reglas dimensionales (gravitacional / ruina)

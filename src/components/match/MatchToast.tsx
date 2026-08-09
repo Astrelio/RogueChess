@@ -13,6 +13,8 @@ type Props = {
   onDismiss?: () => void
   actionLabel?: string
   className?: string
+  /** Fondo oscuro + texto claro (dimensiones oscuras). */
+  dark?: boolean
 }
 
 /**
@@ -25,6 +27,7 @@ export function MatchToast({
   onDismiss,
   actionLabel = 'Cerrar',
   className,
+  dark,
 }: Props) {
   const isError = tone === 'error'
 
@@ -54,9 +57,11 @@ export function MatchToast({
             'pointer-events-auto fixed left-1/2 top-4 z-[160] flex max-w-[min(92vw,440px)] -translate-x-1/2 items-start gap-3 rounded-md border px-4 py-3 backdrop-blur-md',
             isError
               ? 'border-[var(--color-error)]/70 bg-[color-mix(in_srgb,var(--color-error)_22%,#fff)] text-[var(--color-error)] shadow-[0_14px_44px_rgba(160,40,30,0.28)]'
-              : tone === 'aim'
-                ? 'border-[var(--color-primary)]/40 bg-[color-mix(in_srgb,var(--color-surface)_72%,transparent)] text-[var(--color-primary)] shadow-[0_12px_40px_rgba(27,28,25,0.18)]'
-                : 'border-[var(--color-outline-soft)]/50 bg-[color-mix(in_srgb,var(--color-surface)_72%,transparent)] text-[var(--color-ink)] shadow-[0_12px_40px_rgba(27,28,25,0.18)]',
+              : dark
+                ? 'border-white/20 bg-[color-mix(in_srgb,#12100e_88%,transparent)] text-white shadow-[0_12px_40px_rgba(0,0,0,0.45)]'
+                : tone === 'aim'
+                  ? 'border-[var(--color-primary)]/40 bg-[color-mix(in_srgb,var(--color-surface)_72%,transparent)] text-[var(--color-primary)] shadow-[0_12px_40px_rgba(27,28,25,0.18)]'
+                  : 'border-[var(--color-outline-soft)]/50 bg-[color-mix(in_srgb,var(--color-surface)_72%,transparent)] text-[var(--color-ink)] shadow-[0_12px_40px_rgba(27,28,25,0.18)]',
             className,
           )}
         >
@@ -83,7 +88,12 @@ export function MatchToast({
               {message}
             </p>
             {detail ? (
-              <p className="mt-1 font-label text-[10px] uppercase tracking-[0.14em] text-[var(--color-ink-muted)]">
+              <p
+                className={cn(
+                  'mt-1 font-label text-[10px] uppercase tracking-[0.14em]',
+                  dark ? 'text-white/65' : 'text-[var(--color-ink-muted)]',
+                )}
+              >
                 {detail}
               </p>
             ) : null}
@@ -92,7 +102,12 @@ export function MatchToast({
             <button
               type="button"
               onClick={onDismiss}
-              className="shrink-0 font-label text-[10px] uppercase tracking-wider text-[var(--color-ink-muted)] hover:text-[var(--color-ink)]"
+              className={cn(
+                'shrink-0 font-label text-[10px] uppercase tracking-wider',
+                dark
+                  ? 'text-white/70 hover:text-white'
+                  : 'text-[var(--color-ink-muted)] hover:text-[var(--color-ink)]',
+              )}
             >
               {actionLabel}
             </button>

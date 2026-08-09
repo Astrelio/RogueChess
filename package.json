@@ -24,7 +24,13 @@
     "db:patch:clocks": "node scripts/apply-sql.mjs db/patch_phase2_clocks.sql",
     "db:patch:matchmaking": "node scripts/apply-sql.mjs db/patch_matchmaking_queue.sql",
     "db:patch:shop-ready": "node scripts/apply-sql.mjs db/patch_shop_ready.sql",
-    "test": "tsx --test server/engine/engine.test.ts src/lib/matchFreshness.test.ts"
+    "db:patch:dimension-deck": "node scripts/apply-sql.mjs db/patch_dimension_no_repeat.sql",
+    "db:patch:joker-costs": "node scripts/apply-sql.mjs db/patch_joker_costs.sql",
+    "db:patch:copy": "node scripts/apply-sql.mjs db/patch_copy_descriptions.sql",
+    "db:patch:devs": "node scripts/apply-sql.mjs db/patch_developers_team.sql",
+    "optimize:images": "node scripts/optimize-images.mjs",
+    "optimize:devs": "node scripts/crop-devs.mjs",
+    "test": "tsx --test server/engine/engine.test.ts server/engine/bot.test.ts src/lib/matchFreshness.test.ts"
   },
   "dependencies": {
     "@floating-ui/react": "^0.27.20",
@@ -61,6 +67,7 @@
     "@vitejs/plugin-react": "^4.3.4",
     "concurrently": "^9.1.2",
     "dotenv": "^16.4.7",
+    "sharp": "^0.35.3",
     "tailwindcss": "^4.1.3",
     "tsx": "^4.19.3",
     "typescript": "~5.7.2",
