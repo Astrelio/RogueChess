@@ -73,7 +73,7 @@ export function DevsPage() {
 
         <motion.ul
           variants={stagger}
-          className="mt-8 grid gap-5 sm:grid-cols-2"
+          className="mt-6 grid gap-4 sm:mt-8 sm:grid-cols-2 sm:gap-5"
         >
           {devs.map((d) => (
             <motion.li

@@ -140,7 +140,7 @@ export function RankingPage() {
           <p className="font-label mt-6 text-xs uppercase tracking-wider text-[var(--color-ink-muted)]">Cargando…</p>
         ) : null}
 
-        <motion.ul variants={stagger} className="mt-8 divide-y divide-[var(--color-outline-soft)]/40 border-y border-[var(--color-outline-soft)]/40">
+        <motion.ul variants={stagger} className="mt-6 divide-y divide-[var(--color-outline-soft)]/40 border-y border-[var(--color-outline-soft)]/40 sm:mt-8">
           {entries.map((e) => {
             const status = rowStatus(e)
             return (
@@ -148,7 +148,7 @@ export function RankingPage() {
                 key={e.id}
                 variants={riseItem}
                 whileHover={{ backgroundColor: 'rgba(245,244,239,0.8)' }}
-                className="flex flex-wrap items-center gap-3 px-1 py-3.5 sm:flex-nowrap"
+                className="flex flex-wrap items-center gap-2 px-1 py-3 sm:gap-3 sm:py-3.5 sm:flex-nowrap"
               >
                 <span className={cn('font-display w-10 text-sm', medalColor(e.medal))}>#{e.rank_pos}</span>
                 <span className="w-9 shrink-0">

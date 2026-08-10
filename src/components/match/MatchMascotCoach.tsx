@@ -96,7 +96,7 @@ export function MatchMascotCoach({ dimensionId, open, dark }: Props) {
       {open ? (
         <motion.div
           key="bishop-coach"
-          className="rc-match-mascot pointer-events-none absolute bottom-1 right-0 z-[2] hidden max-w-[340px] flex-col items-end gap-2 sm:flex lg:max-w-[360px]"
+          className="rc-match-mascot pointer-events-none fixed left-2 right-2 top-12 z-[2] flex max-w-none flex-col items-center gap-2 sm:absolute sm:bottom-1 sm:left-auto sm:right-0 sm:top-auto sm:max-w-[340px] sm:items-end lg:max-w-[360px]"
           initial={{ opacity: 0, x: 16 }}
           animate={{ opacity: 1, x: 0 }}
           exit={{ opacity: 0, x: 12 }}
@@ -106,7 +106,7 @@ export function MatchMascotCoach({ dimensionId, open, dark }: Props) {
           <AnimatePresence mode="wait">
             <motion.div
               key={`${dim.id}-${tipIndex}`}
-              className={`rc-mascot-bubble relative mb-1 max-w-[250px] rounded-2xl px-3 py-2.5 text-left text-[12px] leading-snug shadow-[0_10px_28px_rgba(0,0,0,0.22)] ${
+              className={`rc-mascot-bubble relative mb-1 max-w-[min(92vw,290px)] rounded-2xl px-2.5 py-2 text-left text-[11px] leading-snug shadow-[0_10px_28px_rgba(0,0,0,0.22)] sm:max-w-[250px] sm:px-3 sm:py-2.5 sm:text-[12px] ${
                 dark
                   ? 'bg-[color-mix(in_srgb,#1a1520_92%,transparent)] text-[#f0e8dc] ring-1 ring-white/10'
                   : 'bg-[color-mix(in_srgb,#fffdf8_94%,transparent)] text-[var(--color-ink)] ring-1 ring-black/8'
@@ -121,7 +121,7 @@ export function MatchMascotCoach({ dimensionId, open, dark }: Props) {
               </p>
               <p>{phrase}</p>
               <span
-                className={`absolute -bottom-1.5 right-8 h-3 w-3 rotate-45 ${
+                className={`absolute -bottom-1.5 right-8 hidden h-3 w-3 rotate-45 sm:block ${
                   dark ? 'bg-[#1a1520]' : 'bg-[#fffdf8]'
                 }`}
                 aria-hidden
@@ -132,7 +132,7 @@ export function MatchMascotCoach({ dimensionId, open, dark }: Props) {
           <img
             src="/mascot/bishop-game.webp"
             alt=""
-            className="rc-match-mascot-img max-h-[min(52dvh,440px)] w-auto max-w-[280px] object-contain object-bottom drop-shadow-[0_12px_28px_rgba(0,0,0,0.32)] lg:max-h-[480px] lg:max-w-[300px]"
+            className="rc-match-mascot-img hidden max-h-[min(52dvh,440px)] w-auto max-w-[280px] object-contain object-bottom drop-shadow-[0_12px_28px_rgba(0,0,0,0.32)] sm:block lg:max-h-[480px] lg:max-w-[300px]"
             draggable={false}
           />
         </motion.div>

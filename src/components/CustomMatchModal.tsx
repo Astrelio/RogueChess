@@ -67,7 +67,7 @@ export function CustomMatchModal({ open, onClose }: Props) {
     <AnimatePresence>
       {open ? (
         <motion.div
-          className="fixed inset-0 z-[140] flex items-center justify-center p-6"
+          className="fixed inset-0 z-[140] flex items-end justify-center p-0 sm:items-center sm:p-6"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -86,7 +86,7 @@ export function CustomMatchModal({ open, onClose }: Props) {
             role="dialog"
             aria-modal="true"
             aria-labelledby="custom-match-title"
-            className="panel relative z-10 w-full max-w-md overflow-hidden border-[var(--color-outline-soft)]/55 bg-[color-mix(in_srgb,#fff_90%,transparent)] p-7 shadow-[0_24px_60px_rgba(115,92,0,0.14)]"
+            className="panel relative z-10 max-h-[min(92dvh,720px)] w-full max-w-md overflow-y-auto border-[var(--color-outline-soft)]/55 bg-[color-mix(in_srgb,#fff_90%,transparent)] p-5 pb-[max(1.25rem,var(--rc-safe-bottom))] shadow-[0_24px_60px_rgba(115,92,0,0.14)] sm:rounded-sm sm:p-7 sm:pb-7"
             initial={{ opacity: 0, y: 24, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 12, scale: 0.98 }}

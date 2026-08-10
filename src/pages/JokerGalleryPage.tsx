@@ -13,8 +13,6 @@ import { factionLabel } from '@/lib/jokerArt'
 import { riseItem, stagger } from '@/lib/motion'
 import type { Joker } from '@/types/match'
 
-const CARD_SIZE = 248
-
 /**
  * Galería pública de comodines: cartas grandes + tooltip que sigue al cursor.
  * Ruta: /comodines
@@ -64,7 +62,7 @@ export function JokerGalleryPage() {
           variants={riseItem}
           className="mt-3 max-w-2xl text-sm leading-relaxed text-[var(--color-ink-muted)] sm:text-base"
         >
-          Pasa el cursor sobre cada carta para leer nombre, rareza, baraja y efecto. En partida se
+          Pasa el cursor (o toca la carta) para leer nombre, rareza, baraja y efecto. En partida se
           compran en el mercado con segundos del reloj.
         </motion.p>
         {loading ? (
@@ -85,11 +83,11 @@ export function JokerGalleryPage() {
               <p className="mt-1 text-xs text-[var(--color-ink-muted)]">
                 {group.items.length} comodín{group.items.length === 1 ? '' : 'es'}
               </p>
-              <ul className="mt-5 flex flex-wrap justify-start gap-6 sm:gap-8">
+              <ul className="mt-5 flex flex-wrap justify-center gap-4 sm:justify-start sm:gap-8">
                 {group.items.map((joker) => (
                   <li key={joker.id || joker.code} className="flex flex-col items-center gap-2">
-                    <JokerCard joker={joker} size={CARD_SIZE} tooltipSide="below" />
-                    <p className="font-display max-w-[248px] text-center text-sm text-[var(--color-ink)]">
+                    <JokerCard joker={joker} cssWidth="var(--rc-joker-gallery)" tooltipSide="below" />
+                    <p className="font-display max-w-[var(--rc-joker-gallery)] text-center text-sm text-[var(--color-ink)]">
                       {joker.name}
                     </p>
                   </li>

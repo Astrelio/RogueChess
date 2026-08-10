@@ -136,8 +136,8 @@ export function LobbyTour({ onDone }: { onDone: () => void }) {
   const isLast = stepIndex === STEPS.length - 1
 
   // Burbuja debajo del target si hay sitio; si no, encima.
-  const bubbleWidth = 320
   const vw = typeof window !== 'undefined' ? window.innerWidth : 1024
+  const bubbleWidth = Math.min(320, vw - 24)
   const vh = typeof window !== 'undefined' ? window.innerHeight : 768
   const below = rect ? rect.top + rect.height + 220 < vh : true
   const bubbleLeft = rect

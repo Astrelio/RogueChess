@@ -40,15 +40,15 @@ export function DimensionLabPage() {
 function LabIndex() {
   const dims = listDimensions()
   return (
-    <PageTransition className="relative z-[1] mx-auto max-w-3xl px-4 py-8 sm:px-6">
+    <PageTransition className="relative z-[1] mx-auto max-w-3xl px-4 py-5 sm:px-6 sm:py-8">
       <p className="font-label text-[10px] uppercase tracking-[0.22em] text-[var(--color-primary)]">
         Laboratorio · solo testeo
       </p>
-      <h1 className="font-display mt-2 text-3xl text-[var(--color-ink)]">Dimensiones</h1>
+      <h1 className="font-display mt-2 text-2xl text-[var(--color-ink)] sm:text-3xl">Dimensiones</h1>
       <p className="mt-2 text-sm text-[var(--color-ink-muted)]">
         Entra a cada una para ver atmósfera, tablero y el reveal de la grieta.
       </p>
-      <ul className="mt-8 grid gap-2 sm:grid-cols-2">
+      <ul className="mt-6 grid gap-2 sm:mt-8 sm:grid-cols-2">
         <li className="sm:col-span-2">
           <Link
             to="/lab/jokers"
@@ -73,7 +73,7 @@ function LabIndex() {
             </p>
             <p className="font-display mt-1 text-lg text-[var(--color-ink)]">Ver todas las cartas</p>
             <p className="mt-1 text-xs text-[var(--color-ink-muted)]">
-              Ilustraciones grandes y ficha al pasar el cursor.
+              Ilustraciones grandes y ficha al tocar o pasar el cursor.
             </p>
           </Link>
         </li>
@@ -155,7 +155,7 @@ function LabDetail({ theme }: { theme: DimensionTheme }) {
 
       <DimensionReveal dimensionId={revealId} onDismiss={() => setRevealId(null)} />
 
-      <div className="relative z-[1] flex min-h-0 flex-1 flex-col gap-3 overflow-auto px-3 py-3 sm:px-5">
+      <div className="relative z-[1] flex min-h-0 flex-1 flex-col gap-3 overflow-auto px-3 pb-[max(0.75rem,var(--rc-safe-bottom))] pt-3 sm:px-5">
         <header className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <Link

@@ -8,6 +8,8 @@ import type { Joker } from '@/types/match'
 type Props = {
   joker: Joker
   size?: number
+  /** Ancho CSS fluido (p.ej. 'var(--rc-joker-inv)'). Tiene prioridad sobre `size`; alto = ratio 1.4. */
+  cssWidth?: string
   className?: string
   onClick?: () => void
   disabled?: boolean
@@ -27,6 +29,7 @@ type Props = {
 export function JokerCard({
   joker,
   size = 168,
+  cssWidth,
   className,
   onClick,
   disabled,
@@ -41,6 +44,7 @@ export function JokerCard({
   const [open, setOpen] = useState(false)
   const [pointer, setPointer] = useState({ x: 0, y: 0 })
   const cardRef = useRef<HTMLButtonElement>(null)
+  const lastPointerType = useRef<string>('mouse')
   const height = Math.round(size * 1.4)
 
   // HTML5 DnD: listeners nativos (Framer Motion se apropia de onDragStart)
@@ -72,6 +76,17 @@ export function JokerCard({
     if (disabled) setOpen(false)
   }, [disabled])
 
+  // Touch sin onClick (galería): tap abre tooltip; cerrar al tocar fuera.
+  useEffect(() => {
+    if (!open) return
+    const close = (e: PointerEvent) => {
+      if (cardRef.current && e.target instanceof Node && cardRef.current.contains(e.target)) return
+      setOpen(false)
+    }
+    document.addEventListener('pointerdown', close)
+    return () => document.removeEventListener('pointerdown', close)
+  }, [open])
+
   const rarityRing =
     joker.rarity === 'legendary'
       ? 'border-[var(--color-primary-container)] shadow-[0_0_0_1px_rgba(212,175,55,0.35)]'
@@ -87,9 +102,27 @@ export function JokerCard({
         disabled={disabled}
         whileHover={disabled || shaded ? undefined : { y: -6, rotate: -1.5 }}
         whileTap={disabled ? undefined : { scale: 0.97 }}
-        onClick={onClick}
-        onMouseEnter={() => setOpen(true)}
-        onMouseLeave={() => setOpen(false)}
+        onPointerDown={(e) => {
+          lastPointerType.current = e.pointerType
+        }}
+        onClick={(e) => {
+          if (onClick) {
+            onClick()
+            return
+          }
+          // Sin acción propia (galería) y en touch: tap alterna el tooltip
+          if (lastPointerType.current !== 'touch') return
+          setPointer({ x: e.clientX, y: e.clientY })
+          setOpen((v) => !v)
+        }}
+        onPointerEnter={(e) => {
+          if (e.pointerType === 'touch') return
+          setOpen(true)
+        }}
+        onPointerLeave={(e) => {
+          if (e.pointerType === 'touch') return
+          setOpen(false)
+        }}
         onMouseMove={(e) => setPointer({ x: e.clientX, y: e.clientY })}
         className={cn(
           'relative overflow-hidden border bg-white p-1.5 shadow-[0_8px_24px_rgba(0,0,0,0.18)] transition disabled:opacity-50',
@@ -99,7 +132,7 @@ export function JokerCard({
           shaded && 'opacity-45 grayscale-[0.35]',
           className,
         )}
-        style={{ width: size, height }}
+        style={cssWidth ? { width: cssWidth, aspectRatio: '1 / 1.4' } : { width: size, height }}
         aria-label={joker.name}
         aria-pressed={selected}
       >
@@ -132,7 +165,8 @@ export function JokerCard({
                     tooltipSide === 'above' && '-translate-y-full',
                   )}
                   style={{
-                    left: pointer.x,
+                    // Clampear al viewport: en móvil el tap puede caer pegado al borde
+                    left: Math.min(Math.max(pointer.x, 150), Math.max(window.innerWidth - 150, 150)),
                     top: tooltipSide === 'below' ? pointer.y + 18 : pointer.y - 14,
                   }}
                 >

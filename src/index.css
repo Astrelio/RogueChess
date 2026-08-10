@@ -35,6 +35,30 @@
 }
 
 @layer base {
+  /* Tamaños fluidos de cartas de comodín — mobile-first (crecen en sm/lg) */
+  :root {
+    --rc-joker-inv: 68px;
+    --rc-joker-shop: 104px;
+    --rc-joker-shop-inv: 84px;
+    --rc-joker-gallery: min(42vw, 178px);
+    --rc-safe-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  @media (min-width: 640px) {
+    :root {
+      --rc-joker-inv: 96px;
+      --rc-joker-shop: 148px;
+      --rc-joker-shop-inv: 112px;
+      --rc-joker-gallery: 200px;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    :root {
+      --rc-joker-gallery: 248px;
+    }
+  }
+
   html,
   body,
   #root {

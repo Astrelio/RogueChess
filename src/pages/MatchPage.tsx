@@ -2448,15 +2448,48 @@ export function MatchPage() {
 
           {/* Tablero centrado */}
           <div className="flex min-h-0 min-w-0 flex-1 flex-col items-center justify-center gap-1.5">
-            {/* Móvil: título corto de dimensión */}
+            {/* Móvil: título corto de dimensión + estado de espera */}
             <div className="w-full shrink-0 text-center sm:hidden">
               <h1 className="font-display text-base text-[var(--color-ink)]">
-                {isWaitingRival ? 'Esperando…' : dimMeta.title}
+                {isWaitingRival ? 'Esperando rival…' : dimMeta.title}
               </h1>
+              {isWaitingRival ? (
+                <div className="mx-auto mt-1.5 flex w-full max-w-[360px] flex-col items-center gap-1.5">
+                  {match.invite_code ? (
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-xl tracking-[0.2em] text-[var(--color-primary)]">
+                        {match.invite_code}
+                      </span>
+                      <button
+                        type="button"
+                        className="btn-ghost !px-2 !py-1 text-xs"
+                        onClick={() => {
+                          void navigator.clipboard?.writeText(match.invite_code ?? '').then(() => {
+                            setCodeCopied(true)
+                            window.setTimeout(() => setCodeCopied(false), 1600)
+                          })
+                        }}
+                      >
+                        {codeCopied ? 'Copiado' : 'Copiar'}
+                      </button>
+                    </div>
+                  ) : null}
+                  <p className="font-label text-[10px] uppercase tracking-wider text-[var(--color-ink-muted)]">
+                    {Math.round((match.time_control_s || 300) / 60)} min
+                    {' · '}
+                    {match.allow_spectators === false ? 'Sin espectadores' : 'Espectadores permitidos'}
+                  </p>
+                  {invitedUsername ? (
+                    <p className="text-xs text-[var(--color-ink)]">
+                      Invitación enviada a <span className="font-medium">@{invitedUsername}</span>
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
 
             <div
-              className={`flex w-[min(100%,560px,calc(100dvh-268px))] flex-col ${
+              className={`flex w-[min(100%,560px,calc(100dvh-236px))] flex-col sm:w-[min(100%,560px,calc(100dvh-268px))] ${
                 isShop || (isShopWaiting && !shopPeek) ? 'opacity-40 blur-[2px]' : ''
               }`}
             >
@@ -2571,7 +2604,10 @@ export function MatchPage() {
 
             {/* Comodines — ocultos en modo espectador */}
             {!isSpectator ? (
-              <div data-tutorial="jokers" className="flex shrink-0 items-center gap-2 pt-0.5">
+              <div
+                data-tutorial="jokers"
+                className="flex shrink-0 flex-wrap items-center justify-center gap-1.5 pt-0.5 sm:gap-2"
+              >
                 <AnimatePresence mode="popLayout">
                   {yourInv.map((item) =>
                     item.joker ? (
@@ -2601,7 +2637,7 @@ export function MatchPage() {
                       >
                         <JokerCard
                           joker={item.joker as Joker}
-                          size={96}
+                          cssWidth="var(--rc-joker-inv)"
                           darkTooltip={darkDim}
                           disabled={
                             busy ||
@@ -2632,7 +2668,7 @@ export function MatchPage() {
                       initial={{ opacity: 0, scale: 0.9 }}
                       animate={{ opacity: 1, scale: 1 }}
                       className="flex items-center justify-center rounded border border-dashed border-[var(--color-outline-soft)]/60 text-[var(--color-ink-muted)]/50"
-                      style={{ width: 96, height: Math.round(96 * 1.4) }}
+                      style={{ width: 'var(--rc-joker-inv)', aspectRatio: '1 / 1.4' }}
                       aria-hidden
                     >
                       <span className="font-label text-[9px] uppercase tracking-wider">Vacío</span>

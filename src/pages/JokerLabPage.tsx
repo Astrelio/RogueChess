@@ -146,7 +146,7 @@ export function JokerLabPage() {
     >
       <DimensionEnv theme={LAB_DIM} persistent intensity={0.55} />
 
-      <div className="relative z-[1] mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col gap-4 overflow-auto px-4 py-6 sm:px-6">
+      <div className="relative z-[1] mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col gap-3 overflow-auto px-3 pb-[max(1rem,var(--rc-safe-bottom))] pt-4 sm:gap-4 sm:px-6 sm:py-6">
         <header>
           <Link
             to="/lab"
@@ -157,16 +157,16 @@ export function JokerLabPage() {
           <p className="font-label mt-2 text-[10px] uppercase tracking-[0.22em] text-[var(--color-primary)]">
             Laboratorio · comodines
           </p>
-          <h1 className="font-display mt-2 text-3xl text-[var(--color-ink)]">FX de comodines</h1>
+          <h1 className="font-display mt-2 text-2xl text-[var(--color-ink)] sm:text-3xl">FX de comodines</h1>
           <p className="mt-2 max-w-xl text-sm text-[var(--color-ink-muted)]">
             Reproduce cada animación (cast, aim, ritual, reloj) sin partida. Misma atmósfera y
             tablero que en juego.
           </p>
         </header>
 
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(280px,340px)]">
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(280px,340px)] lg:gap-6">
           <div className="flex flex-col items-center gap-3">
-            <div className={cn('rc-board-stage relative w-[min(100%,420px)]', `rc-board-stage--${LAB_DIM}`)}>
+            <div className={cn('rc-board-stage relative w-[min(100%,420px,calc(100dvh-280px))] sm:w-[min(100%,420px)]', `rc-board-stage--${LAB_DIM}`)}>
               <JokerClockFx event={clockFx} />
               <Chessboard
                 options={{
@@ -232,7 +232,7 @@ export function JokerLabPage() {
                 </p>
               </div>
             </div>
-            <ul className="grid max-h-[min(58vh,520px)] gap-1 overflow-auto sm:grid-cols-1">
+            <ul className="grid max-h-[min(42vh,420px)] gap-1 overflow-auto sm:max-h-[min(58vh,520px)] sm:grid-cols-1">
               {codes.map((code) => {
                 const s = getJokerFxSpec(code)
                 const active = code === selected

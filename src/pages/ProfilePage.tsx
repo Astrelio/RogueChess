@@ -76,7 +76,7 @@ export function ProfilePage() {
         variants={stagger}
         initial="initial"
         animate="animate"
-        className="grid gap-10 lg:grid-cols-2"
+        className="grid gap-6 sm:gap-10 lg:grid-cols-2"
       >
         <motion.div variants={riseItem} className="lg:col-span-2">
           <BackToHome />

@@ -285,8 +285,9 @@ export function TutorialCoach({
             ) : null}
           </AnimatePresence>
 
-          <div className="rc-match-mascot pointer-events-none fixed bottom-1 right-2 z-[85] hidden max-w-[340px] flex-col items-end gap-2 sm:flex lg:max-w-[360px]">
-            <div className="pointer-events-none mb-1 max-w-[270px]">
+          {/* Móvil: strip arriba (no tapa tablero/comodines). sm+: mascota abajo-derecha. */}
+          <div className="rc-match-mascot pointer-events-none fixed left-2 right-2 top-12 z-[85] flex max-w-none flex-col items-center gap-2 sm:bottom-1 sm:left-auto sm:right-2 sm:top-auto sm:max-w-[340px] sm:items-end lg:max-w-[360px]">
+            <div className="pointer-events-none mb-1 max-w-[290px] sm:max-w-[270px]">
               <AnimatePresence mode="wait">
                 <MascotSpeech key={stage} label={`Tutorial · ${step.label}`} dark={dark}>
                   <p>{step.text}</p>
@@ -302,7 +303,7 @@ export function TutorialCoach({
             <img
               src="/mascot/bishop-game.webp"
               alt=""
-              className="rc-match-mascot-img max-h-[min(52dvh,440px)] w-auto max-w-[280px] object-contain object-bottom drop-shadow-[0_12px_28px_rgba(0,0,0,0.32)] lg:max-h-[480px] lg:max-w-[300px]"
+              className="rc-match-mascot-img hidden max-h-[min(52dvh,440px)] w-auto max-w-[280px] object-contain object-bottom drop-shadow-[0_12px_28px_rgba(0,0,0,0.32)] sm:block lg:max-h-[480px] lg:max-w-[300px]"
               draggable={false}
             />
           </div>

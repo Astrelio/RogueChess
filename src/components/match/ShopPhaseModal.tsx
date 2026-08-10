@@ -150,7 +150,7 @@ export function ShopPhaseModal({
             aria-modal="true"
             aria-labelledby="shop-title"
             className={cn(
-              'rc-shop relative z-10 flex h-[min(100dvh,820px)] w-full max-w-5xl flex-col overflow-hidden border sm:h-[min(92dvh,780px)] sm:rounded-md',
+              'rc-shop relative z-10 flex h-[min(100dvh,820px)] w-full max-w-5xl flex-col overflow-hidden border pb-[env(safe-area-inset-bottom,0px)] sm:h-[min(92dvh,780px)] sm:rounded-md sm:pb-0',
               `rc-shop--${dim}`,
               darkShop
                 ? 'border-white/10 bg-[color-mix(in_srgb,#14110e_94%,transparent)] text-[#f2efe8] shadow-[0_28px_80px_rgba(0,0,0,0.55)]'
@@ -253,7 +253,9 @@ export function ShopPhaseModal({
               </div>
             </header>
 
-            <div className="flex min-h-0 flex-1 flex-col justify-center gap-5 overflow-hidden px-4 py-3 sm:gap-6 sm:px-6 sm:py-4">
+            {/* overflow-y-auto + m-auto: centra si cabe, scrollea en pantallas bajas */}
+            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-3 sm:px-6 sm:py-4">
+              <div className="m-auto flex w-full flex-col gap-5 sm:gap-6">
               {/* Ofertas — cartas mudas */}
               <motion.section
                 variants={stagger}
@@ -293,14 +295,14 @@ export function ShopPhaseModal({
                             transition: { duration: 0.35, ease: easeOut },
                           }}
                           className={cn(
-                            'relative flex w-[128px] flex-col items-center sm:w-[148px]',
+                            'relative flex w-[var(--rc-joker-shop)] flex-col items-center',
                             flashOffer === offer.id && 'ring-2 ring-[var(--color-primary)] rounded-sm',
                             draggingOfferId === offer.id && 'opacity-40',
                           )}
                         >
                           {flashOffer === offer.id ? (
                             <motion.span
-                              className="font-label absolute inset-x-0 top-0 z-10 flex h-[180px] items-center justify-center bg-[color-mix(in_srgb,var(--color-surface)_75%,transparent)] text-sm uppercase tracking-[0.18em] text-[var(--color-primary)] sm:h-[207px]"
+                              className="font-label absolute inset-x-0 top-0 z-10 flex aspect-[1/1.4] items-center justify-center bg-[color-mix(in_srgb,var(--color-surface)_75%,transparent)] text-sm uppercase tracking-[0.18em] text-[var(--color-primary)]"
                               initial={{ opacity: 0 }}
                               animate={{ opacity: 1 }}
                             >
@@ -309,8 +311,7 @@ export function ShopPhaseModal({
                           ) : null}
                           <JokerCard
                             joker={offer.joker as Joker}
-                            size={128}
-                            className="sm:!w-[148px] sm:!h-[207px]"
+                            cssWidth="var(--rc-joker-shop)"
                             disabled={locked}
                             shaded={!affordable}
                             selected={selectedOfferId === offer.id}
@@ -402,15 +403,14 @@ export function ShopPhaseModal({
                           exit={{ opacity: 0, scale: 0.85 }}
                           transition={{ duration: 0.4, ease: easeOut }}
                           className={cn(
-                            'flex w-[100px] flex-col items-center sm:w-[112px]',
+                            'flex w-[var(--rc-joker-shop-inv)] flex-col items-center',
                             justBoughtInventoryId === item.id &&
                               'ring-2 ring-[var(--color-primary)] rounded-sm',
                           )}
                         >
                           <JokerCard
                             joker={item.joker as Joker}
-                            size={100}
-                            className="sm:!w-[112px] sm:!h-[157px]"
+                            cssWidth="var(--rc-joker-shop-inv)"
                             disabled={busy}
                             selected={selectedInvId === item.id}
                             tooltipSide="below"
@@ -479,18 +479,19 @@ export function ShopPhaseModal({
                           ? 'border-[var(--color-primary)] bg-[color-mix(in_srgb,var(--color-primary-fixed)_35%,transparent)] text-[var(--color-primary)] scale-[1.03]'
                           : 'border-[var(--color-outline-soft)]/50',
                       )}
-                      style={{ width: 100, height: Math.round(100 * 1.4) }}
+                      style={{ width: 'var(--rc-joker-shop-inv)', aspectRatio: '1 / 1.4' }}
                     >
                       {dropHover && draggingOfferId ? 'Soltar' : 'Vacío'}
                     </div>
                   ))}
                 </div>
               </section>
+              </div>
             </div>
 
             <footer
               className={cn(
-                'shrink-0 border-t hairline px-4 py-3 sm:px-6',
+                'shrink-0 border-t hairline px-4 pt-3 pb-[max(0.75rem,var(--rc-safe-bottom))] sm:px-6',
                 darkShop
                   ? 'border-white/10 bg-black/25'
                   : 'bg-[color-mix(in_srgb,var(--color-surface-low)_80%,transparent)]',
@@ -541,7 +542,7 @@ export function ShopWaitOverlay({ open, peek, shopLeftMs, rivalShopping, onPeek,
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
-        className="pointer-events-auto fixed bottom-4 left-1/2 z-[125] flex w-[min(100%-2rem,420px)] -translate-x-1/2 flex-col gap-2 border border-[var(--color-outline-soft)]/60 bg-[color-mix(in_srgb,var(--color-surface)_92%,#fff)] px-4 py-3 shadow-[0_16px_40px_rgba(27,28,25,0.18)] sm:flex-row sm:items-center sm:justify-between"
+        className="pointer-events-auto fixed bottom-[max(1rem,var(--rc-safe-bottom))] left-1/2 z-[125] flex w-[min(100%-2rem,420px)] -translate-x-1/2 flex-col gap-2 border border-[var(--color-outline-soft)]/60 bg-[color-mix(in_srgb,var(--color-surface)_92%,#fff)] px-4 py-3 shadow-[0_16px_40px_rgba(27,28,25,0.18)] sm:flex-row sm:items-center sm:justify-between"
       >
         <div>
           <p className="font-label text-[10px] uppercase tracking-[0.18em] text-[var(--color-primary)]">

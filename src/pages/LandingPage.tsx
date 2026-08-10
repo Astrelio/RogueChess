@@ -58,7 +58,7 @@ export function LandingPage() {
     <PageTransition className="flex min-h-0 flex-1 flex-col justify-center">
       <CustomMatchModal open={customOpen} onClose={() => setCustomOpen(false)} />
       {showTour ? <LobbyTour onDone={() => setShowTour(false)} /> : null}
-      <section className="relative grid min-h-0 flex-1 items-center gap-4 overflow-hidden lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:gap-6">
+      <section className="relative grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)] items-center gap-3 overflow-hidden sm:gap-4 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:grid-rows-1 lg:gap-6">
         <motion.div variants={stagger} initial="initial" animate="animate" className="relative z-10 max-w-xl">
           <motion.div
             variants={riseItem}
@@ -85,7 +85,7 @@ export function LandingPage() {
             Ajedrez con giros: dimensiones que cambian las reglas, comodines y un reloj que es tu moneda.
           </motion.p>
 
-          <motion.div variants={riseItem} className="mt-7 flex flex-wrap gap-3 sm:mt-9">
+          <motion.div variants={riseItem} className="mt-5 flex flex-wrap gap-2.5 sm:mt-9 sm:gap-3">
             {!ready ? (
               <span className="font-label text-xs uppercase tracking-wider text-[var(--color-ink-muted)]">
                 Cargando…
@@ -136,7 +136,7 @@ export function LandingPage() {
         </motion.div>
 
         <motion.div
-          className="relative mx-auto flex h-full max-h-full w-full max-w-[680px] items-center justify-center lg:max-w-none lg:justify-end"
+          className="relative mx-auto flex h-full max-h-full min-h-0 w-full max-w-[680px] items-center justify-center lg:max-w-none lg:justify-end"
           initial={{ opacity: 0, x: 28, scale: 0.96 }}
           animate={{ opacity: 1, x: 0, scale: 1 }}
           transition={{ duration: 0.85, ease: easeOut, delay: 0.12 }}
@@ -148,7 +148,7 @@ export function LandingPage() {
             height={2528}
             decoding="async"
             draggable={false}
-            className="h-auto max-h-[min(480px,58dvh)] w-full max-w-[800px] select-none object-contain object-center sm:max-h-[min(720px,78dvh)] lg:max-h-[min(880px,90dvh)]"
+            className="h-full max-h-[min(420px,40dvh)] w-full max-w-[800px] select-none object-contain object-center sm:max-h-[min(720px,78dvh)] lg:max-h-[min(880px,90dvh)]"
             animate={{ y: [0, -10, 0] }}
             transition={{ duration: 5.8, repeat: Infinity, ease: 'easeInOut' }}
           />

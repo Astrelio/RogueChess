@@ -48,7 +48,7 @@ export function LoginPage() {
 
   return (
     <PageTransition>
-      <motion.section variants={stagger} initial="initial" animate="animate" className="mx-auto max-w-md">
+      <motion.section variants={stagger} initial="initial" animate="animate" className="mx-auto w-full max-w-md px-0">
         <motion.h1 variants={riseItem} className="font-display text-2xl text-[var(--color-primary)] sm:text-3xl">
           {mode === 'login' ? 'Iniciar sesión' : 'Crear cuenta'}
         </motion.h1>

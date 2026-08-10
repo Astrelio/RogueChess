@@ -104,7 +104,7 @@ function ShellChrome({
         >
           <div
             className={cn(
-              'mx-auto flex items-center justify-between gap-4 px-4 py-3 sm:px-8',
+              'mx-auto flex items-center justify-between gap-3 px-4 py-2.5 sm:gap-4 sm:px-8 sm:py-3',
               isGallery ? 'max-w-6xl' : 'max-w-5xl',
             )}
           >
@@ -153,9 +153,9 @@ function ShellChrome({
             : isGallery
               ? 'mx-auto max-w-6xl px-4 sm:px-8'
               : 'mx-auto max-w-5xl px-4 sm:px-8',
-          isMatch && 'px-3 py-2 sm:px-5',
+          immersive && 'px-3 pt-2 pb-[max(0.5rem,var(--rc-safe-bottom))] sm:px-5',
           isLanding && 'flex min-h-0 flex-1 flex-col justify-center overflow-hidden py-3 sm:py-4',
-          !isLanding && !immersive && 'py-8 sm:py-12',
+          !isLanding && !immersive && 'py-5 sm:py-8 lg:py-12',
         )}
       >
         <AnimatePresence mode="wait">
@@ -183,7 +183,7 @@ function ShellChrome({
 
 function GuestMenu() {
   return (
-    <div className="font-label flex items-center gap-4 text-xs uppercase tracking-[0.12em]">
+    <div className="font-label flex items-center gap-2 text-xs uppercase tracking-[0.12em] sm:gap-4">
       <NavLink
         to="/comodines"
         className={({ isActive }) =>
