@@ -285,11 +285,29 @@ export function TutorialCoach({
             ) : null}
           </AnimatePresence>
 
-          {/* Móvil: strip arriba (no tapa tablero/comodines). sm+: mascota abajo-derecha. */}
-          <div className="rc-match-mascot pointer-events-none fixed left-2 right-2 top-12 z-[85] flex max-w-none flex-col items-center gap-2 sm:bottom-1 sm:left-auto sm:right-2 sm:top-auto sm:max-w-[340px] sm:items-end lg:max-w-[360px]">
-            <div className="pointer-events-none mb-1 max-w-[290px] sm:max-w-[270px]">
+          {/*
+            Móvil: strip arriba. sm+: mascota abajo-derecha.
+            Con aim activo el banner de apuntado manda → ocultamos el globo en móvil
+            para no apilar overlays encima del tablero.
+          */}
+          <div
+            className={`rc-match-mascot pointer-events-none fixed left-2 right-2 z-[85] flex max-w-none flex-col items-center gap-2 sm:bottom-1 sm:left-auto sm:right-2 sm:top-auto sm:max-w-[340px] sm:items-end lg:max-w-[360px] ${
+              aimingJokerCode ? 'top-auto bottom-[max(5.5rem,var(--rc-safe-bottom))] sm:bottom-1' : 'top-14'
+            }`}
+          >
+            <div
+              className={`pointer-events-none mb-1 w-full max-w-[min(92vw,320px)] sm:max-w-[270px] ${
+                aimingJokerCode ? 'hidden sm:block' : ''
+              }`}
+            >
               <AnimatePresence mode="wait">
-                <MascotSpeech key={stage} label={`Tutorial · ${step.label}`} dark={dark}>
+                <MascotSpeech
+                  key={stage}
+                  label={`Tutorial · ${step.label}`}
+                  dark={dark}
+                  tail={aimingJokerCode ? 'right' : 'none'}
+                  className="w-full"
+                >
                   <p>{step.text}</p>
                   {step.hint ? (
                     <p className="font-label mt-2.5 text-[9px] uppercase tracking-[0.16em] opacity-55">

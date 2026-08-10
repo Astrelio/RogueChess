@@ -30,6 +30,7 @@ export function MatchToast({
   dark,
 }: Props) {
   const isError = tone === 'error'
+  const isAim = tone === 'aim'
 
   return createPortal(
     <AnimatePresence>
@@ -54,13 +55,17 @@ export function MatchToast({
               : { duration: 0.25, ease: easeOut }
           }
           className={cn(
-            'pointer-events-auto fixed left-1/2 top-4 z-[160] flex max-w-[min(92vw,440px)] -translate-x-1/2 items-start gap-3 rounded-md border px-4 py-3 backdrop-blur-md',
+            // Ancho explícito: sin él, flex-1 + min-w-0 colapsa el texto a 1 palabra/línea.
+            'pointer-events-auto fixed left-1/2 z-[160] w-[min(calc(100vw-1.25rem),440px)] -translate-x-1/2 rounded-md border px-3 py-2.5 backdrop-blur-md sm:px-4 sm:py-3',
+            isAim
+              ? 'top-[3.25rem] flex flex-col gap-2 sm:top-4 sm:flex-row sm:items-start sm:gap-3'
+              : 'top-4 flex items-start gap-3',
             isError
               ? 'border-[var(--color-error)]/70 bg-[color-mix(in_srgb,var(--color-error)_22%,#fff)] text-[var(--color-error)] shadow-[0_14px_44px_rgba(160,40,30,0.28)]'
               : dark
                 ? 'border-white/20 bg-[color-mix(in_srgb,#12100e_88%,transparent)] text-white shadow-[0_12px_40px_rgba(0,0,0,0.45)]'
-                : tone === 'aim'
-                  ? 'border-[var(--color-primary)]/40 bg-[color-mix(in_srgb,var(--color-surface)_72%,transparent)] text-[var(--color-primary)] shadow-[0_12px_40px_rgba(27,28,25,0.18)]'
+                : isAim
+                  ? 'border-[var(--color-primary)]/40 bg-[color-mix(in_srgb,var(--color-surface)_88%,transparent)] text-[var(--color-primary)] shadow-[0_12px_40px_rgba(27,28,25,0.18)]'
                   : 'border-[var(--color-outline-soft)]/50 bg-[color-mix(in_srgb,var(--color-surface)_72%,transparent)] text-[var(--color-ink)] shadow-[0_12px_40px_rgba(27,28,25,0.18)]',
             className,
           )}
@@ -103,13 +108,16 @@ export function MatchToast({
               type="button"
               onClick={onDismiss}
               className={cn(
-                'shrink-0 font-label text-[10px] uppercase tracking-wider',
+                'font-label shrink-0 text-[10px] uppercase tracking-wider',
+                isAim &&
+                  'w-full rounded border border-current/25 px-2 py-1.5 text-center sm:w-auto sm:border-0 sm:px-0 sm:py-0 sm:text-left',
                 dark
                   ? 'text-white/70 hover:text-white'
                   : 'text-[var(--color-ink-muted)] hover:text-[var(--color-ink)]',
               )}
             >
-              {actionLabel}
+              <span className="sm:hidden">{isAim ? 'Cancelar' : actionLabel}</span>
+              <span className="hidden sm:inline">{actionLabel}</span>
             </button>
           ) : null}
         </motion.div>

@@ -2264,7 +2264,7 @@ export function MatchPage() {
         message={error}
         tone="error"
         dark={darkDim}
-        className={aim ? '!top-[5.5rem]' : undefined}
+        className={aim ? '!top-[8.5rem] sm:!top-[5.5rem]' : undefined}
       />
       {aim ? (
         <JokerTargetBanner
@@ -2713,6 +2713,7 @@ export function MatchPage() {
               dimensionId={dimMeta.id}
               open={showMatchBoard && !isWaitingRival && !isFinished}
               dark={darkDim}
+              aiming={Boolean(aim)}
             />
           )}
         </div>

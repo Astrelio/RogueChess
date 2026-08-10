@@ -50,7 +50,7 @@ const MODES: Record<string, JokerTargetMode> = {
       {
         key: 'square',
         label: 'Víctima',
-        hint: 'Peón enemigo o pieza que fue peón (coronada o Multijugos)',
+        hint: 'Elige un peón enemigo (o pieza que fue peón)',
       },
     ],
   },

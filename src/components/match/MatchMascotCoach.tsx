@@ -67,12 +67,14 @@ type Props = {
   /** Visible solo cuando el tablero está en juego (no durante reveal). */
   open: boolean
   dark?: boolean
+  /** Oculta el tip en móvil mientras se apunta un comodín (evita solaparse con el banner). */
+  aiming?: boolean
 }
 
 /**
  * Mascota Bishop Game + globo de tips. No pausa: rota frases durante la partida.
  */
-export function MatchMascotCoach({ dimensionId, open, dark }: Props) {
+export function MatchMascotCoach({ dimensionId, open, dark, aiming }: Props) {
   const dim = getDimension(dimensionId)
   const tips = TIPS[dim.id] ?? TIPS.primo
   const [tipIndex, setTipIndex] = useState(0)
@@ -96,7 +98,7 @@ export function MatchMascotCoach({ dimensionId, open, dark }: Props) {
       {open ? (
         <motion.div
           key="bishop-coach"
-          className="rc-match-mascot pointer-events-none fixed left-2 right-2 top-12 z-[2] flex max-w-none flex-col items-center gap-2 sm:absolute sm:bottom-1 sm:left-auto sm:right-0 sm:top-auto sm:max-w-[340px] sm:items-end lg:max-w-[360px]"
+          className="rc-match-mascot pointer-events-none fixed left-2 right-2 top-14 z-[2] flex max-w-none flex-col items-center gap-2 sm:absolute sm:bottom-1 sm:left-auto sm:right-0 sm:top-auto sm:max-w-[340px] sm:items-end lg:max-w-[360px]"
           initial={{ opacity: 0, x: 16 }}
           animate={{ opacity: 1, x: 0 }}
           exit={{ opacity: 0, x: 12 }}
@@ -104,29 +106,31 @@ export function MatchMascotCoach({ dimensionId, open, dark }: Props) {
           aria-live="polite"
         >
           <AnimatePresence mode="wait">
-            <motion.div
-              key={`${dim.id}-${tipIndex}`}
-              className={`rc-mascot-bubble relative mb-1 max-w-[min(92vw,290px)] rounded-2xl px-2.5 py-2 text-left text-[11px] leading-snug shadow-[0_10px_28px_rgba(0,0,0,0.22)] sm:max-w-[250px] sm:px-3 sm:py-2.5 sm:text-[12px] ${
-                dark
-                  ? 'bg-[color-mix(in_srgb,#1a1520_92%,transparent)] text-[#f0e8dc] ring-1 ring-white/10'
-                  : 'bg-[color-mix(in_srgb,#fffdf8_94%,transparent)] text-[var(--color-ink)] ring-1 ring-black/8'
-              }`}
-              initial={{ opacity: 0, y: 6, scale: 0.96 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -4, scale: 0.98 }}
-              transition={{ duration: 0.35, ease: easeOut }}
-            >
-              <p className="font-label mb-1 text-[9px] uppercase tracking-[0.16em] text-[var(--color-primary)]">
-                Bishop · {dim.title}
-              </p>
-              <p>{phrase}</p>
-              <span
-                className={`absolute -bottom-1.5 right-8 hidden h-3 w-3 rotate-45 sm:block ${
-                  dark ? 'bg-[#1a1520]' : 'bg-[#fffdf8]'
+            {!aiming ? (
+              <motion.div
+                key={`${dim.id}-${tipIndex}`}
+                className={`rc-mascot-bubble relative mb-1 w-full max-w-[min(92vw,320px)] rounded-2xl px-2.5 py-2 text-left text-[11px] leading-snug shadow-[0_10px_28px_rgba(0,0,0,0.22)] sm:max-w-[250px] sm:px-3 sm:py-2.5 sm:text-[12px] ${
+                  dark
+                    ? 'bg-[color-mix(in_srgb,#1a1520_92%,transparent)] text-[#f0e8dc] ring-1 ring-white/10'
+                    : 'bg-[color-mix(in_srgb,#fffdf8_94%,transparent)] text-[var(--color-ink)] ring-1 ring-black/8'
                 }`}
-                aria-hidden
-              />
-            </motion.div>
+                initial={{ opacity: 0, y: 6, scale: 0.96 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -4, scale: 0.98 }}
+                transition={{ duration: 0.35, ease: easeOut }}
+              >
+                <p className="font-label mb-1 text-[9px] uppercase tracking-[0.16em] text-[var(--color-primary)]">
+                  Bishop · {dim.title}
+                </p>
+                <p>{phrase}</p>
+                <span
+                  className={`absolute -bottom-1.5 right-8 hidden h-3 w-3 rotate-45 sm:block ${
+                    dark ? 'bg-[#1a1520]' : 'bg-[#fffdf8]'
+                  }`}
+                  aria-hidden
+                />
+              </motion.div>
+            ) : null}
           </AnimatePresence>
 
           <img
