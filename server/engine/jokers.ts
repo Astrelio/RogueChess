@@ -235,7 +235,7 @@ export function applyJoker(
       const reserved = new Set<string>()
       const blast = square
 
-      function findSafe(from: string, type: PieceSymbol, color: 'w' | 'b'): string | null {
+      function findSafe(from: string, type: PieceSymbol): string | null {
         const isPawn = type === 'p'
         // Preferir alejarse del centro de la explosión
         const candidates = ringsFrom(from).slice().sort((a, b) => {
@@ -255,7 +255,7 @@ export function applyJoker(
       }
 
       for (const d of displaced) {
-        const safe = findSafe(d.from, d.type, d.color)
+        const safe = findSafe(d.from, d.type)
         if (!safe) {
           // Sin refugio: la pieza regresa a su casilla (no se quema esa casilla luego)
           chess.put({ type: d.type, color: d.color }, d.from as Square)
