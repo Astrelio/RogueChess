@@ -136,6 +136,7 @@ export function legalInteractionSquares(opts: LegalMovesOpts): {
 
   const gravity = dimension === 'gravitacional'
   const mirror = dimension === 'espejo'
+  const isKing = piece.type === 'k'
 
   type Cand = { interact: string; effective: string; capture: boolean }
   const cands: Cand[] = []
@@ -147,8 +148,10 @@ export function legalInteractionSquares(opts: LegalMovesOpts): {
   }>
 
   for (const m of legal) {
-    if (!destOk(m.from, m.to, piece.type, blocked, pathBlocked, gravity)) continue
-    const interact = mirror ? mirrorCommand(m.from, m.to) : m.to
+    // Rey: sin filtros dimensionales ni inversión espejo
+    if (!isKing && !destOk(m.from, m.to, piece.type, blocked, pathBlocked, gravity)) continue
+    if (m.captured === 'k') continue
+    const interact = mirror && !isKing ? mirrorCommand(m.from, m.to) : m.to
     if (!interact || interact === m.from) continue
     cands.push({
       interact,
@@ -176,7 +179,9 @@ export function legalInteractionSquares(opts: LegalMovesOpts): {
       if (sq === from) continue
       const fen2 = applyGhostMoveFen(fen, from, sq, color, blocked, gravity, pathBlocked)
       if (!fen2) continue
-      const capture = Boolean(chess.get(sq as Square))
+      const target = chess.get(sq as Square)
+      if (target?.type === 'k') continue
+      const capture = Boolean(target)
       const interact = mirror ? mirrorCommand(from, sq) : sq
       if (!interact || interact === from) continue
       cands.push({ interact, effective: sq, capture })
@@ -195,7 +200,7 @@ export function legalInteractionSquares(opts: LegalMovesOpts): {
     list = list.filter((c) => !c.capture)
   }
 
-  if (dimension === 'cadena_sangre') {
+  if (dimension === 'cadena_sangre' && !isKing) {
     const anyCap = list.some((c) => c.capture)
     if (anyCap) list = list.filter((c) => c.capture)
   }

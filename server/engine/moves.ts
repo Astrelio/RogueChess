@@ -138,6 +138,7 @@ function stripCastling(castling: string, from: string): string {
 /**
  * Aplica un movimiento "forzado" (fuera de la legalidad chess.js, p.ej.
  * paso fantasma) y devuelve el FEN con el turno cambiado al rival.
+ * Nunca captura un rey.
  */
 function forcedMoveFen(
   chess: Chess,
@@ -145,8 +146,11 @@ function forcedMoveFen(
   to: string,
   mover: Color,
   promotion?: PieceSymbol,
-): string {
-  const piece = chess.get(from as Square)!
+): string | null {
+  const piece = chess.get(from as Square)
+  if (!piece) return null
+  const dest = chess.get(to as Square)
+  if (dest?.type === 'k') return null
   chess.remove(from as Square)
   chess.remove(to as Square)
   chess.put({ type: promotion ?? piece.type, color: piece.color }, to as Square)
@@ -228,6 +232,7 @@ function tryGhostMove(
   }
 
   const nextFen = forcedMoveFen(chess, from, to, ctx.moverColor, undefined)
+  if (!nextFen) return { ok: false, reason: 'El rey no puede ser capturado' }
   if (colorInCheck(nextFen, ctx.moverColor, ctx)) {
     return { ok: false, reason: 'Ese movimiento dejaría a tu rey en jaque' }
   }
@@ -285,6 +290,7 @@ function tryMirrorPawnMove(
   }
 
   const nextFen = forcedMoveFen(chess, from, to, ctx.moverColor, undefined)
+  if (!nextFen) return { ok: false, reason: 'El rey no puede ser capturado' }
   if (colorInCheck(nextFen, ctx.moverColor, ctx)) {
     return { ok: false, reason: 'Espejo: ese movimiento dejaría a tu rey en jaque' }
   }
@@ -410,8 +416,9 @@ export function applyPlayerMove(ctx: EngineContext, input: MoveInput): MoveResul
     return { ok: false, error: 'No tienes una pieza en esa casilla' }
   }
 
-  // Dimensión espejo: el comando del humano se invierte (el bot ya elige destino real)
-  if (ctx.dimension === 'espejo' && !input.skipMirror) {
+  // Dimensión espejo: el comando del humano se invierte (el bot ya elige destino real).
+  // El rey es inmune: se mueve sin inversión (escapes clásicos).
+  if (ctx.dimension === 'espejo' && !input.skipMirror && movingPiece.type !== 'k') {
     const mirrored = mirrorCommand(from, to)
     if (!mirrored || mirrored === from) {
       return { ok: false, error: 'Espejo: el movimiento invertido sale del tablero' }
@@ -432,6 +439,9 @@ export function applyPlayerMove(ctx: EngineContext, input: MoveInput): MoveResul
   let ghostUsed = false
 
   if (chosen) {
+    if (chosen.captured === 'k') {
+      return { ok: false, error: 'El rey no puede ser capturado' }
+    }
     const boardCheck = checkMoveAgainstBoard(ctx, chosen)
     if (boardCheck.ok === false) return { ok: false, error: boardCheck.reason }
     const blood = bloodChainViolation(ctx, chosen, legalMoves)
@@ -804,7 +814,17 @@ export function listLegalMoves(ctx: EngineContext): Move[] {
 
   if (ctx.dimension === 'cadena_sangre') {
     const captures = out.filter((m) => m.captured)
-    if (captures.length) return captures
+    if (captures.length) {
+      // El rey puede escapar/moverse aunque haya capturas obligatorias.
+      const kingMoves = out.filter((m) => m.piece === 'k')
+      const merged = [...captures]
+      for (const km of kingMoves) {
+        if (!captures.some((c) => c.from === km.from && c.to === km.to && c.promotion === km.promotion)) {
+          merged.push(km)
+        }
+      }
+      return merged
+    }
   }
   return out
 }

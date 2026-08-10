@@ -1595,8 +1595,9 @@ export function MatchPage() {
     const piece = chess.get(sourceSquare as 'a1')
     let dest = targetSquare
     // Preview alineado con el motor: en Espejo el comando se invierte por completo
-    // (NO validar quemado sobre la intención — solo sobre el destino efectivo)
-    if (match!.current_dimension === 'espejo') {
+    // (NO validar quemado sobre la intención — solo sobre el destino efectivo).
+    // El rey es inmune a Espejo: mueve al destino clickeado.
+    if (match!.current_dimension === 'espejo' && piece?.type !== 'k') {
       const mirrored = mirrorCommand(sourceSquare, targetSquare)
       if (!mirrored || mirrored === sourceSquare) {
         setError('Espejo: ese movimiento cae fuera del tablero')
@@ -1605,7 +1606,8 @@ export function MatchPage() {
       dest = mirrored
     }
 
-    if (blockedSquares.has(dest)) {
+    // Rey inmune a casillas quemadas/ruina
+    if (piece?.type !== 'k' && blockedSquares.has(dest)) {
       setError(
         match!.current_dimension === 'espejo'
           ? 'Espejo: el destino efectivo está quemado o en ruina'
@@ -1614,8 +1616,8 @@ export function MatchPage() {
       return false
     }
 
-    // Trayectoria: solo ruina corta el rayo (Bombarda se atraviesa)
-    if (piece && piece.type !== 'n') {
+    // Trayectoria: solo ruina corta el rayo (Bombarda se atraviesa). Rey: un paso.
+    if (piece && piece.type !== 'n' && piece.type !== 'k') {
       const path = pathBetweenClient(sourceSquare, dest)
       if (path.some((sq) => pathBlockedSquares.has(sq))) {
         setError('La trayectoria cruza una zona en ruina')
@@ -1650,8 +1652,8 @@ export function MatchPage() {
       }
     }
 
-    // Cadena de sangre: si hay captura legal, obliga
-    if (match!.current_dimension === 'cadena_sangre') {
+    // Cadena de sangre: si hay captura legal, obliga (el rey puede escapar sin capturar)
+    if (match!.current_dimension === 'cadena_sangre' && piece?.type !== 'k') {
       try {
         const probe = new Chess(fenWithSideToMove(match!.fen, match!.turn_color))
         const legal = probe.moves({ verbose: true }) as Array<{

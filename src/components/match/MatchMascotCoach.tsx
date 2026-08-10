@@ -12,10 +12,10 @@ const TIPS: Record<DimensionTheme, string[]> = {
     'Cada pieza cuenta. El mercado no te las devuelve.',
   ],
   espejo: [
-    'Espejo: lo que mueves se invierte en el tablero.',
-    'Derecha es izquierda, arriba es abajo. Piensa al revés.',
+    'Espejo: lo que mueves se invierte… excepto el rey.',
+    'Tu rey se mueve normal. El resto del ejército, al revés.',
     'Los peones caminan hacia tu propio bando, pero no entran en tu fila base.',
-    'Antes de soltar, mira el destino invertido. El espejo no perdona.',
+    'Antes de soltar una pieza (no el rey), mira el destino invertido.',
     'Si te mareas, es normal: el tablero también está del revés.',
   ],
   bluriel: [
@@ -34,15 +34,15 @@ const TIPS: Record<DimensionTheme, string[]> = {
   ],
   cadena_sangre: [
     'Cadena de Sangre: si puedes capturar, debes capturar.',
+    'El rey puede escapar sin capturar. El resto, no.',
     'No cuentan las capturas que dejen a tu rey en jaque.',
     'Fuerza capturas y atrapa al rival en la cadena.',
-    'Aquí no hay “mejor me retiro”: si se puede comer, se come.',
     'Obligación de captura: planifica con eso en mente.',
   ],
   ruina: [
     'Ruina: cada captura deja una zona muerta.',
-    'Nadie pisa ni atraviesa esa casilla el resto de la fase.',
-    'El caballo sí salta las ruinas. Úsalo.',
+    'Nadie pisa ni atraviesa esa casilla… salvo el rey y el caballo.',
+    'El rey es inmune: puede pisar zonas muertas para escapar.',
     'Captura con cabeza: cada bocado deja un cráter.',
     'El caballo es tu mejor amigo en este terreno roto.',
   ],

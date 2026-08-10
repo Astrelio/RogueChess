@@ -298,7 +298,7 @@ function destinationsFor(
   return out
 }
 
-/** Aplica un pseudo-movimiento y devuelve FEN (turno pasado al rival). */
+/** Aplica un pseudo-movimiento y devuelve FEN (turno pasado al rival). Nunca captura un rey. */
 export function fenAfterPseudoMove(
   fen: string,
   move: PseudoMove,
@@ -312,6 +312,8 @@ export function fenAfterPseudoMove(
   }
   const piece = chess.get(move.from as Square)
   if (!piece) return null
+  const dest = chess.get(move.to as Square)
+  if (dest?.type === 'k') return null
   chess.remove(move.from as Square)
   chess.remove(move.to as Square)
   chess.put(

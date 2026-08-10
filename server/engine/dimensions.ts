@@ -37,8 +37,12 @@ export type DimCheck = { ok: true } | { ok: false; reason: string }
 
 /**
  * Valida una jugada contra dimensión activa + celdas bloqueadas.
+ * El rey es inmune a anomalías dimensionales (quemado, ruina, gravedad):
+ * se mueve con reglas clásicas de ajedrez.
  */
 export function checkMoveAgainstBoard(ctx: EngineContext, move: Move): DimCheck {
+  if (move.piece === 'k') return { ok: true }
+
   const landing = blockedSquares(ctx)
   const pathBlock = pathBlockedSquares(ctx)
 
@@ -69,6 +73,7 @@ export function checkMoveAgainstBoard(ctx: EngineContext, move: Move): DimCheck 
 /**
  * Cadena de sangre: si existe al menos una captura legal (tras filtros de
  * tablero), las jugadas sin captura quedan prohibidas.
+ * El rey puede escapar/moverse sin capturar (inmune a la obligación).
  */
 export function bloodChainViolation(
   ctx: EngineContext,
@@ -76,6 +81,7 @@ export function bloodChainViolation(
   allLegal: Move[],
 ): DimCheck {
   if (ctx.dimension !== 'cadena_sangre') return { ok: true }
+  if (chosen.piece === 'k') return { ok: true }
   if (chosen.captured) return { ok: true }
   return bloodChainRequiresCapture(ctx, allLegal)
 }

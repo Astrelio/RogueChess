@@ -1,5 +1,6 @@
 /**
- * Recorta rostros de Contexto/programadores → public/devs/*.webp
+ * Recorta rostros de fotos de programadores → public/devs/*.webp.
+ * Fuentes: colocar PNGs/JPEGs en una carpeta local `srcDir` (antes Contexto/programadores).
  * Regiones afinadas a ojo (selfie vs cuerpo completo vs ilustración).
  */
 import fs from 'node:fs'

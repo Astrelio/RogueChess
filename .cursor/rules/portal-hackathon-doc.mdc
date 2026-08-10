@@ -9,7 +9,7 @@ alwaysApply: true
 
 ## Cuándo
 
-Cuando el usuario pida el documento, o al cerrar trabajo de Portal / antes del pitch. No reinventar: basarse en lo implementado y en `Contexto/PORTAL_USAGE.md` (notas vivas).
+Cuando el usuario pida el documento, o al cerrar trabajo de Portal / antes del pitch. No reinventar: basarse en lo implementado y en `docs/PORTAL_USAGE.md` (notas vivas).
 
 ## Qué debe cubrir el doc final
 
@@ -22,4 +22,4 @@ Cuando el usuario pida el documento, o al cerrar trabajo de Portal / antes del p
 
 ## Notas vivas
 
-Mantener `Contexto/PORTAL_USAGE.md` al día cuando se añada o cambie superficie de Portal.
+Mantener `docs/PORTAL_USAGE.md` al día cuando se añada o cambie superficie de Portal.

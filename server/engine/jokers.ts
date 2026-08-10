@@ -219,14 +219,16 @@ export function applyJoker(
         if (sq === square) continue
         const piece = chess.get(sq as Square)
         if (!piece) continue
+        // El rey es inmune a la explosión: permanece en su casilla.
+        if (piece.type === 'k') continue
         displaced.push({ from: sq, type: piece.type, color: piece.color })
         chess.remove(sq as Square)
       }
 
-      // 2) Reubicar: reyes primero (inmunes a muerte; deben salir de la zona),
-      //    luego el resto. Así un peón no "roba" la casilla segura del rey.
+      // 2) Reubicar piezas (sin reyes: ya se dejaron en sitio).
+      //    Preferir piezas mayores primero para no robar casillas.
       displaced.sort((a, b) => {
-        const rank = (t: string) => (t === 'k' ? 0 : t === 'q' ? 1 : 2)
+        const rank = (t: string) => (t === 'q' ? 0 : t === 'r' || t === 'b' || t === 'n' ? 1 : 2)
         return rank(a.type) - rank(b.type) || a.from.localeCompare(b.from)
       })
 
@@ -247,15 +249,6 @@ export function applyJoker(
           if (reserved.has(cand)) continue
           if (chess.get(cand as Square)) continue
           if (isPawn && (cand[1] === '1' || cand[1] === '8')) continue
-          // El rey no puede aterrizar en jaque
-          if (type === 'k') {
-            chess.put({ type, color }, cand as Square)
-            const fenTry = editedFen(chess)
-            const kingColor = color === 'w' ? 'white' : 'black'
-            const inCheck = colorInCheck(fenTry, kingColor, ctx)
-            chess.remove(cand as Square)
-            if (inCheck) continue
-          }
           return cand
         }
         return null

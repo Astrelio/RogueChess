@@ -139,13 +139,13 @@ test('espejo: el comando se invierte (caballo)', () => {
   if (res.ok) assert.equal(res.uci, 'd4c2')
 })
 
-test('espejo: enroque corto se invierte a enroque largo', () => {
+test('espejo: el rey (y el enroque) no se invierten', () => {
   const fen = '7k/8/8/8/8/8/8/R3K2R w KQ - 0 1'
   const res = applyPlayerMove(makeCtx({ fen, dimension: 'espejo' }), { from: 'e1', to: 'g1' })
   assert.equal(res.ok, true)
   if (res.ok) {
-    assert.equal(res.uci, 'e1c1')
-    assert.match(res.fenAfter, /2KR|K1R|2K1R|K2R/) // rey en flanco de dama
+    assert.equal(res.uci, 'e1g1')
+    assert.match(res.fenAfter, /K|RK/)
   }
 })
 
@@ -348,7 +348,7 @@ test('morsmordre: Expecto propio (global) también anula Morsmordre', () => {
   if (byOwnEffect.ok) assert.equal(byOwnEffect.fizzled, true)
 })
 
-test('bombarda: sacrifica peón, quema 3x3 vacías, empuja reyes primero', () => {
+test('bombarda: sacrifica peón, quema 3x3 vacías; el rey no se mueve', () => {
   const fen = '7k/8/8/3n4/3P4/8/8/K7 w - - 0 1'
   const res = applyJoker(makeCtx({ fen }), 'bombarda', { square: 'd4' })
   assert.equal(res.ok, true)
@@ -626,4 +626,77 @@ test('listLegalMoves incluye escapes de jaque falso gravitacional', async () => 
     moves.some((m) => m.from === 'a1'),
     'el rey debe poder moverse',
   )
+})
+
+test('rey inmune: puede aterrizar en casilla quemada', () => {
+  const fen = '8/8/8/8/8/8/8/K6k w - - 0 1'
+  const ctx = makeCtx({
+    fen,
+    dimension: 'ruina',
+    cells: [cell({ id: 'b1', square: 'b1', effect: 'burned' })],
+  })
+  const move = applyPlayerMove(ctx, { from: 'a1', to: 'b1' })
+  assert.equal(move.ok, true, move.ok ? '' : move.error)
+})
+
+test('rey inmune a Espejo: mueve al destino clickeado sin invertir', () => {
+  // Sin skipMirror, el humano clickea b2; si se invirtiera iría a "fuera"/otra casilla.
+  // Con inmunidad, b2 es el destino real (escape del rey).
+  const fen = '8/8/8/8/8/8/8/K6k w - - 0 1'
+  const move = applyPlayerMove(makeCtx({ fen, dimension: 'espejo' }), {
+    from: 'a1',
+    to: 'b1',
+  })
+  assert.equal(move.ok, true, move.ok ? '' : move.error)
+  if (move.ok) {
+    const chess = new Chess(move.fenAfter)
+    assert.ok(chess.get('b1')?.type === 'k' && chess.get('b1')?.color === 'w')
+  }
+})
+
+test('cadena_sangre: el rey puede escapar sin capturar', async () => {
+  const { listLegalMoves } = await import('./moves.js')
+  // Torre en d2 puede capturar peón d5; el rey en a1 también puede moverse
+  const fen = '8/8/8/3p4/8/8/3R4/K6k w - - 0 1'
+  const moves = listLegalMoves(makeCtx({ fen, dimension: 'cadena_sangre' }))
+  assert.ok(moves.some((m) => m.captured), 'hay captura legal')
+  assert.ok(
+    moves.some((m) => m.piece === 'k' && !m.captured),
+    'el rey puede moverse en quieto',
+  )
+  const quietKing = applyPlayerMove(makeCtx({ fen, dimension: 'cadena_sangre' }), {
+    from: 'a1',
+    to: 'b1',
+  })
+  assert.equal(quietKing.ok, true, quietKing.ok ? '' : quietKing.error)
+})
+
+test('ghost no puede capturar al rey', () => {
+  const fen = '8/8/8/8/8/8/8/R6k w - - 0 1'
+  const ctx = makeCtx({
+    fen,
+    effects: [
+      {
+        id: 'g1',
+        kind: 'ghost_step',
+        is_active: true,
+        applied_by: 'p-me',
+        payload: {},
+      },
+    ],
+  })
+  const hitKing = applyPlayerMove(ctx, { from: 'a1', to: 'h1' })
+  assert.equal(hitKing.ok, false)
+})
+
+test('bombarda: el rey en la zona no se desplaza', () => {
+  // Rey blanco en e3 dentro del 3x3 de d4
+  const fen = '7k/8/8/8/3P4/4K3/8/8 w - - 0 1'
+  const res = applyJoker(makeCtx({ fen }), 'bombarda', { square: 'd4' })
+  assert.equal(res.ok, true)
+  if (res.ok) {
+    const chess = new Chess(res.newFen!)
+    const k = chess.get('e3' as 'a1')
+    assert.ok(k?.type === 'k' && k.color === 'w', 'el rey permanece en e3')
+  }
 })

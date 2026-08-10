@@ -44,7 +44,7 @@ const DIMENSIONS: Record<DimensionTheme, DimensionInfo> = {
     title: 'Dimensión Espejo',
     eyebrow: 'Grieta · Reflexión',
     blurb:
-      'Todo se invierte: derecha es izquierda, arriba es abajo. Los peones avanzan hacia tu propio bando (sin entrar en tu fila base).',
+      'Todo se invierte excepto el rey, que se mueve con reglas clásicas. Los peones avanzan hacia tu propio bando (sin entrar en tu fila base).',
     board: { light: '#e8eef5', dark: '#5a7390', frame: 'rgba(140,190,230,0.55)' },
   },
   bluriel: {
@@ -68,7 +68,7 @@ const DIMENSIONS: Record<DimensionTheme, DimensionInfo> = {
     title: 'Cadena de Sangre',
     eyebrow: 'Grieta · Obligación',
     blurb:
-      'Si puedes capturar de forma legal, debes hacerlo. No cuentan las capturas que dejen a tu rey en jaque.',
+      'Si puedes capturar de forma legal, debes hacerlo (el rey puede escapar sin capturar). No cuentan las capturas que dejen a tu rey en jaque.',
     board: { light: '#f3e8e6', dark: '#8a4a4a', frame: 'rgba(180,50,50,0.45)' },
   },
   ruina: {
@@ -76,7 +76,7 @@ const DIMENSIONS: Record<DimensionTheme, DimensionInfo> = {
     title: 'Dimensión Ruina',
     eyebrow: 'Grieta · Zonas muertas',
     blurb:
-      'Cada captura deja esa casilla destruida. Nadie la pisa ni la atraviesa el resto de la fase (el caballo sí salta).',
+      'Cada captura deja esa casilla destruida. Nadie la pisa ni la atraviesa el resto de la fase (el caballo sí salta; el rey es inmune y puede pisar zonas muertas).',
     board: { light: '#e8e0d4', dark: '#6a6358', frame: 'rgba(160,150,130,0.35)' },
   },
   mercado_negro: {
