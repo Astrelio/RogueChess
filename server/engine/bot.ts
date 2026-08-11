@@ -378,8 +378,11 @@ export function planBotJoker(
   }
   const me = cjs(ctx.moverColor)
   const base = evaluatePosition(ctx, ctx.moverColor)
-  let best: BotJokerPlan | null = null
+  // Campos sueltos (no `BotJokerPlan | null` mutado en closure): evita never en tsc -b / Vercel.
   let bestScore = -Infinity
+  let bestInventoryId = ''
+  let bestCode = ''
+  let bestPayload: Record<string, unknown> = {}
 
   const consider = (item: BotInvItem, payload: Record<string, unknown>, bonus = 0) => {
     const result = applyJoker(ctx, item.code, payload)
@@ -393,7 +396,9 @@ export function planBotJoker(
     }
     if (score > bestScore) {
       bestScore = score
-      best = { inventoryId: item.id, code: item.code, payload, score }
+      bestInventoryId = item.id
+      bestCode = item.code
+      bestPayload = payload
     }
   }
 
@@ -503,9 +508,13 @@ export function planBotJoker(
   }
 
   // Tras el mejor joker, comprobar que aún hay una jugada decente.
-  // Copiar a `plan`: TS no rastrea asignaciones a `best` hechas dentro de `consider`.
-  const plan = best
-  if (!plan || bestScore < 38) return null
+  if (bestScore < 38 || !bestCode || !bestInventoryId) return null
+  const plan: BotJokerPlan = {
+    inventoryId: bestInventoryId,
+    code: bestCode,
+    payload: bestPayload,
+    score: bestScore,
+  }
   if (bestScore < 70) {
     const after = applyJoker(ctx, plan.code, plan.payload)
     if (after.ok && after.newFen) {
