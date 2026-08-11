@@ -705,7 +705,7 @@ async function recordBotMove(
   await persistEngineOps(matchId, result, { updateFen: false, cycleIndex })
 }
 
-/** Compra agresiva en tienda: llena slots con los mejores comodines asequibles. */
+/** Compra agresiva en tienda: llena slots y marca al bot listo. */
 async function maybeBotBuyJokers(
   matchId: string,
   state: Record<string, unknown>,
@@ -728,7 +728,6 @@ async function maybeBotBuyJokers(
   const ownedN = Number(owned[0]?.n ?? 0)
   const slots = Number(bot.inventory_slots ?? 3)
   let free = Math.max(0, slots - ownedN)
-  if (free <= 0) return state
 
   const cycle = Number(match.cycle_index ?? 0)
   const offers = await sql`
@@ -746,17 +745,39 @@ async function maybeBotBuyJokers(
     (a, b) => (JOKER_BUY_PRIORITY[b.code] ?? 0) - (JOKER_BUY_PRIORITY[a.code] ?? 0),
   )
 
-  let timeMs = Number(bot.time_ms ?? 0)
+  // Reloj real desde match (más fiable que el snapshot del player)
+  let timeMs =
+    Number(
+      bot.color === 'white' ? match.white_time_ms : match.black_time_ms,
+    ) || Number(bot.time_ms ?? 0)
+
+  // Reserva baja: el bot debe comprar; deja ~8s o 5% del reloj
+  const reserveMs = Math.max(8_000, Math.floor(timeMs * 0.05))
+  let bought = 0
+
   for (const offer of ranked) {
     if (free <= 0) break
     const costMs = Number(offer.cost_seconds) * 1000
-    if (timeMs - costMs < 25_000) continue
+    if (timeMs < costMs) continue
+    // Primera compra: permitir aunque quede justo; siguientes respetan reserva
+    if (bought > 0 && timeMs - costMs < reserveMs) continue
     try {
       await sql`SELECT * FROM fn_buy_joker(${botUid}, ${matchId}::uuid, ${offer.id}::uuid)`
       timeMs -= costMs
       free--
+      bought++
     } catch (err) {
       console.warn('bot buy failed', offer.code, err)
+    }
+  }
+
+  // Marcar listo (cierra tienda si el humano ya lo estaba)
+  try {
+    await sql`SELECT * FROM fn_player_ready_shop(${botUid}, ${matchId}::uuid)`
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    if (!msg.includes('already ready')) {
+      console.warn('bot shop ready failed', err)
     }
   }
 
@@ -767,6 +788,15 @@ matchesRouter.post('/:id/shop/close', requireAuth, async (req, res, next) => {
   try {
     await sql`SELECT * FROM fn_player_ready_shop(${req.user!.uid}, ${req.params.id}::uuid)`
     let state = await getState(req.params.id, req.user!.uid)
+    // Bot compra + ready (si aún estábamos en shop)
+    try {
+      const st = (state?.match as { status?: string } | undefined)?.status
+      if (st === 'shop') {
+        state = await maybeBotBuyJokers(req.params.id, state!, req.user!.uid)
+      }
+    } catch (botBuyErr) {
+      console.warn('maybeBotBuyJokers after shop close failed', botBuyErr)
+    }
     // Si ya salió de shop (ambos listos / timeout), el bot puede mover
     const match = state?.match as { status?: string } | undefined
     if (match?.status === 'active') {
@@ -786,8 +816,17 @@ matchesRouter.post('/:id/shop/close', requireAuth, async (req, res, next) => {
 /** Fuerza cierre de tienda si ya pasó el minuto. */
 matchesRouter.post('/:id/shop/timeout', requireAuth, async (req, res, next) => {
   try {
-    await sql`SELECT * FROM fn_force_close_shop_if_due(${req.params.id}::uuid)`
+    // Comprar antes de forzar cierre
     let state = await getState(req.params.id, req.user!.uid)
+    try {
+      if ((state?.match as { status?: string } | undefined)?.status === 'shop') {
+        state = await maybeBotBuyJokers(req.params.id, state!, req.user!.uid)
+      }
+    } catch (botBuyErr) {
+      console.warn('maybeBotBuyJokers before shop timeout failed', botBuyErr)
+    }
+    await sql`SELECT * FROM fn_force_close_shop_if_due(${req.params.id}::uuid)`
+    state = await getState(req.params.id, req.user!.uid)
     const match = state?.match as { status?: string } | undefined
     if (match?.status === 'active') {
       try {

@@ -507,15 +507,35 @@ export function planBotJoker(
     }
   }
 
-  // Tras el mejor joker, comprobar que aún hay una jugada decente.
-  if (bestScore < 38 || !bestCode || !bestInventoryId) return null
+  // Umbral bajo: el bot debe gastar comodines con frecuencia.
+  if (bestScore < 18 || !bestCode || !bestInventoryId) {
+    // Fallback: cualquier pasivo del inventario
+    const passive = inventory.find((i) =>
+      [
+        'giratiempo',
+        'paso_fantasma',
+        'axio_tempus',
+        'petrificus_totalus',
+        'arresto_momentum',
+        'expecto_patronum',
+      ].includes(i.code),
+    )
+    if (!passive) return null
+    return {
+      inventoryId: passive.id,
+      code: passive.code,
+      payload: {},
+      score: 20,
+    }
+  }
   const plan: BotJokerPlan = {
     inventoryId: bestInventoryId,
     code: bestCode,
     payload: bestPayload,
     score: bestScore,
   }
-  if (bestScore < 70) {
+  // Solo descartar jugadas de tablero muy flojas; pasivos / scores altos siempre se usan
+  if (bestScore < 55 && Object.keys(bestPayload).length > 0) {
     const after = applyJoker(ctx, plan.code, plan.payload)
     if (after.ok && after.newFen) {
       const nextCtx = withFen(ctx, after.newFen, ctx.turnColor, ctx.moverColor)
@@ -523,9 +543,8 @@ export function planBotJoker(
       if (!reply) return null
       const moveRes = applyPlayerMove(nextCtx, botInputFor(nextCtx, reply))
       if (!moveRes.ok) return null
-      // Si el joker no mejora la eval ni da jaque, no gastar
       const gain = evaluatePosition(nextCtx, ctx.moverColor) - base
-      if (gain < 15 && !moveRes.isCheck && !moveRes.isMate) return null
+      if (gain < 5 && !moveRes.isCheck && !moveRes.isMate) return null
     }
   }
   return plan
