@@ -20,6 +20,8 @@ type SoundKind =
   | 'shop_phase'
   | 'match_end'
   | 'resign'
+  | 'check'
+  | 'illegal'
 
 /**
  * Sonido custom de cambio de fase (grieta / dimensión):
@@ -290,6 +292,30 @@ export function playMoveSound(opts?: { capture?: boolean }): void {
     slideTo: 95,
     filterFreq: 1400,
   })
+}
+
+/** Jaque: chime ascendente distinto a move/capture. */
+export function playCheckSound(): void {
+  if (sfxMuted) return
+  if (!throttle('check', 180)) return
+  tone(520, { duration: 0.09, type: 'sine', volume: 0.34, slideTo: 780, filterFreq: 2800 })
+  window.setTimeout(() => {
+    tone(780, { duration: 0.12, type: 'triangle', volume: 0.28, slideTo: 980, filterFreq: 3200 })
+  }, 70)
+}
+
+/** Jugada / aim ilegal. */
+export function playIllegalSound(): void {
+  if (sfxMuted) return
+  if (!throttle('illegal', 120)) return
+  tone(180, {
+    duration: 0.14,
+    type: 'square',
+    volume: 0.22,
+    slideTo: 90,
+    filterFreq: 900,
+  })
+  noiseBurst({ duration: 0.05, volume: 0.2, filterFreq: 600 })
 }
 
 /** Hover suave en botones. */

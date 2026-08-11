@@ -454,8 +454,13 @@ export function planBotJoker(
         break
       }
       case 'defodio': {
-        for (const sq of vacantSquares(chess).slice(0, 24)) {
-          consider(item, { square: sq }, 45)
+        const vacants = vacantSquares(chess)
+        for (const sq of vacants) {
+          // Preferir centro / casillas avanzadas
+          const file = sq.charCodeAt(0) - 97
+          const rank = Number(sq[1])
+          const center = 4 - Math.abs(file - 3.5) - Math.abs(rank - 4.5)
+          consider(item, { square: sq }, 40 + center * 6)
         }
         break
       }
@@ -463,28 +468,31 @@ export function planBotJoker(
         for (const sq of ownSquares(chess, me)) {
           const p = chess.get(sq as Square)
           if (!p || p.type === 'k' || p.type === 'p') continue
-          consider(item, { square: sq }, (PIECE_VALUE[p.type] ?? 0) * 0.2)
+          consider(item, { square: sq }, (PIECE_VALUE[p.type] ?? 0) * 0.28 + 20)
         }
         break
       }
       case 'aparicion': {
         const own = ownSquares(chess, me)
-        const limit = Math.min(own.length, 6)
+        const limit = Math.min(own.length, 10)
         for (let i = 0; i < limit; i++) {
           for (let j = i + 1; j < limit; j++) {
-            consider(item, { a: own[i]!, b: own[j]! }, 25)
+            consider(item, { a: own[i]!, b: own[j]! }, 35)
           }
         }
         break
       }
       case 'imperius': {
-        const foes = enemySquares(chess, me).slice(0, 8)
+        const foes = enemySquares(chess, me)
         for (const from of foes) {
           const piece = chess.get(from as Square)
-          if (!piece) continue
-          const probes = vacantSquares(chess).slice(0, 10)
+          if (!piece || piece.type === 'k') continue
+          const probes = vacantSquares(chess)
           for (const to of probes) {
-            consider(item, { from, to }, (PIECE_VALUE[piece.type] ?? 0) * 0.2 + 30)
+            const bonus =
+              (PIECE_VALUE[piece.type] ?? 0) * 0.25 +
+              (ctx.dimension === 'cadena_sangre' ? 40 : 20)
+            consider(item, { from, to }, bonus)
           }
         }
         break
@@ -494,7 +502,20 @@ export function planBotJoker(
     }
   }
 
-  // Solo gastar si el comodín aporta claramente
-  if (!best || bestScore < 55) return null
+  // Tras el mejor joker, comprobar que aún hay una jugada decente
+  if (!best || bestScore < 38) return null
+  if (best.score < 70) {
+    const after = applyJoker(ctx, best.code, best.payload)
+    if (after.ok && after.newFen) {
+      const nextCtx = withFen(ctx, after.newFen, ctx.turnColor, ctx.moverColor)
+      const reply = pickBotMove(nextCtx, { depth: 2, timeMs: 120 })
+      if (!reply) return null
+      const moveRes = applyPlayerMove(nextCtx, botInputFor(nextCtx, reply))
+      if (!moveRes.ok) return null
+      // Si el joker no mejora la eval ni da jaque, no gastar
+      const gain = evaluatePosition(nextCtx, ctx.moverColor) - base
+      if (gain < 15 && !moveRes.isCheck && !moveRes.isMate) return null
+    }
+  }
   return best
 }

@@ -93,6 +93,8 @@ export type MatchRow = {
   invite_code?: string | null
   allow_spectators?: boolean
   is_rated?: boolean
+  /** Perfil que ofreció tablas (null = sin oferta). */
+  draw_offered_by?: string | null
 }
 
 export type BoardCell = {

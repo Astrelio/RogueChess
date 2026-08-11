@@ -669,12 +669,12 @@ export function applyPlayerMove(ctx: EngineContext, input: MoveInput): MoveResul
 
   const fenRaw = chess.fen()
   const opponent = otherColor(ctx.moverColor)
-  let isCheck = colorInCheck(fenRaw, opponent, ctx)
-  let isMate = false
-  if (isCheck) {
+
+  function outcomeForOpponent(fen: string): { isCheck: boolean; isMate: boolean; isStalemate: boolean } {
+    const inCheck = colorInCheck(fen, opponent, ctx)
     const oppCtx: EngineContext = {
       ...ctx,
-      fen: fenRaw,
+      fen,
       turnColor: opponent,
       moverColor: opponent,
       moverPlayerId: ctx.opponentPlayerId ?? 'opponent',
@@ -683,28 +683,15 @@ export function applyPlayerMove(ctx: EngineContext, input: MoveInput): MoveResul
       giratiempoMovesLeft: 0,
       giratiempoCaptures: 0,
     }
-    isMate = listLegalMoves(oppCtx).length === 0
-  } else if (
-    ctx.dimension === 'gravitacional' ||
-    blockedSquares(ctx).size > 0 ||
-    ctx.dimension === 'cadena_sangre'
-  ) {
-    // Ahogado bajo reglas dimensionales
-    const oppCtx: EngineContext = {
-      ...ctx,
-      fen: fenRaw,
-      turnColor: opponent,
-      moverColor: opponent,
-      moverPlayerId: ctx.opponentPlayerId ?? 'opponent',
-      opponentPlayerId: ctx.moverPlayerId,
-      giratiempoActive: false,
-      giratiempoMovesLeft: 0,
-      giratiempoCaptures: 0,
-    }
-    if (listLegalMoves(oppCtx).length === 0) {
-      // No tratamos ahogado como mate; isMate queda false
+    const noMoves = listLegalMoves(oppCtx).length === 0
+    return {
+      isCheck: inCheck,
+      isMate: inCheck && noMoves,
+      isStalemate: !inCheck && noMoves,
     }
   }
+
+  let { isCheck, isMate, isStalemate } = outcomeForOpponent(fenRaw)
 
   // Giratiempo: si queda un movimiento extra, el FEN debe seguir en nuestro turno
   // (chess.js ya lo pasó al rival).
@@ -712,6 +699,7 @@ export function applyPlayerMove(ctx: EngineContext, input: MoveInput): MoveResul
     ctx.giratiempoActive &&
     !isCheck &&
     !isMate &&
+    !isStalemate &&
     ctx.giratiempoMovesLeft - 1 > 0 &&
     ctx.giratiempoCaptures + (isCapture ? 1 : 0) <= 1
 
@@ -737,7 +725,13 @@ export function applyPlayerMove(ctx: EngineContext, input: MoveInput): MoveResul
     }
     if (ownCollapsed || nextCollapsed) {
       fenAfter = fenWithSideToMove(chess.fen(), nextColor)
+      // Recalcular mate/ahogado tras colapsos
+      ;({ isCheck, isMate, isStalemate } = outcomeForOpponent(fenAfter))
     }
+  }
+
+  if (isStalemate) {
+    ops.events.push('Ahogado: tablas')
   }
 
   return {
@@ -748,6 +742,7 @@ export function applyPlayerMove(ctx: EngineContext, input: MoveInput): MoveResul
     isCapture,
     isCheck,
     isMate,
+    isStalemate,
     ghostUsed,
     ...ops,
   }

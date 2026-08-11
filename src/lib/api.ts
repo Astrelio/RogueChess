@@ -181,7 +181,11 @@ export const api = {
     request<{ state: MatchState }>(`/api/matches/${id}`, { token }),
 
   makeMove: (token: string, id: string, body: { from: string; to: string; promotion?: string; timeSpentMs?: number }) =>
-    request<{ state: MatchState }>(`/api/matches/${id}/move`, {
+    request<{
+      state: MatchState
+      events?: string[]
+      botJokerFx?: { code: string; squares: string[] }[]
+    }>(`/api/matches/${id}/move`, {
       method: 'POST',
       token,
       body: JSON.stringify(body),
@@ -216,6 +220,16 @@ export const api = {
 
   resignMatch: (token: string, id: string) =>
     request<{ state: MatchState }>(`/api/matches/${id}/resign`, { method: 'POST', token }),
+
+  offerDraw: (token: string, id: string) =>
+    request<{ state: MatchState }>(`/api/matches/${id}/draw/offer`, { method: 'POST', token }),
+
+  respondDraw: (token: string, id: string, accept: boolean) =>
+    request<{ state: MatchState }>(`/api/matches/${id}/draw/respond`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ accept }),
+    }),
 
   /** Registra al usuario como espectador de la partida (idempotente). */
   spectateMatch: (token: string, id: string) =>

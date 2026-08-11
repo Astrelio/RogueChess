@@ -112,6 +112,8 @@ export type MoveResult =
       isCapture: boolean
       isCheck: boolean
       isMate: boolean
+      /** Ahogado: rival sin jugadas legales y no en jaque → tablas. */
+      isStalemate: boolean
       ghostUsed: boolean
     } & EngineOps)
   | { ok: false; error: string }

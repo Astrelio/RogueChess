@@ -28,6 +28,9 @@
     "db:patch:joker-costs": "node scripts/apply-sql.mjs db/patch_joker_costs.sql",
     "db:patch:copy": "node scripts/apply-sql.mjs db/patch_copy_descriptions.sql",
     "db:patch:devs": "node scripts/apply-sql.mjs db/patch_developers_team.sql",
+    "db:patch:stalemate-draw": "node scripts/apply-sql.mjs db/patch_stalemate_draw.sql",
+    "db:patch:shop-rng": "node scripts/apply-sql.mjs db/patch_shop_rng_balance.sql",
+    "db:patch:bluriel": "node scripts/apply-sql.mjs db/patch_enable_bluriel.sql",
     "optimize:images": "node scripts/optimize-images.mjs",
     "optimize:devs": "node scripts/crop-devs.mjs",
     "test": "tsx --test server/engine/engine.test.ts server/engine/bot.test.ts src/lib/matchFreshness.test.ts"

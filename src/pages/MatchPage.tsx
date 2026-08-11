@@ -21,6 +21,7 @@ import { DimensionReveal } from '@/components/match/DimensionReveal'
 import { MatchMascotCoach } from '@/components/match/MatchMascotCoach'
 import { TutorialCoach } from '@/components/onboarding/TutorialCoach'
 import { JokerClockFx, type ClockFxEvent } from '@/components/match/JokerClockFx'
+import { InstantJokerFx } from '@/components/match/InstantJokerFx'
 import { JokerFxOverlay } from '@/components/match/JokerFxOverlay'
 import { MatchToast } from '@/components/match/MatchToast'
 import { MatchPortalBridge, type MatchPortalPeerInfo } from '@/components/match/MatchPortalBridge'
@@ -48,6 +49,7 @@ type BoardArrow = { startSquare: string; endSquare: string; color: string }
 import { previewAparicionFen, previewMorsmordreFen, previewMultijugosFen, previewRemovePieceFen } from '@/lib/jokerOptimistic'
 import { fenHideEnemyInvisible } from '@/lib/invisibleFen'
 import {
+  forcedCaptureSquares,
   indicatorStyle,
   jokerTargetSquares,
   legalInteractionSquares,
@@ -61,6 +63,8 @@ import {
 } from '@/lib/jokerFx'
 import {
   fenPieceCount,
+  playCheckSound,
+  playIllegalSound,
   playLoseSound,
   playMatchEndNeutralSound,
   playMoveSound,
@@ -250,6 +254,9 @@ export function MatchPage() {
   const [clockFx, setClockFx] = useState<ClockFxEvent | null>(null)
   const clockFxTimer = useRef<number | null>(null)
   const [vanishingInvId, setVanishingInvId] = useState<string | null>(null)
+  const [instantJoker, setInstantJoker] = useState<{ code: string; name: string } | null>(null)
+  const instantTimer = useRef<number | null>(null)
+  const [rivalAimLabel, setRivalAimLabel] = useState<string | null>(null)
   const [shopIntroDone, setShopIntroDone] = useState(false)
   const shopIntroCycleRef = useRef<number | null>(null)
   const [revealDimension, setRevealDimension] = useState<string | null>(null)
@@ -260,8 +267,18 @@ export function MatchPage() {
   /** Tablero solo tras cerrar el reveal a pantalla completa. */
   const [boardVisible, setBoardVisible] = useState(false)
 
-  const playJokerFx = useCallback((code: string, castSquares: string[]) => {
+  const flashInstantJoker = useCallback((code: string, name?: string) => {
+    if (instantTimer.current != null) window.clearTimeout(instantTimer.current)
+    setInstantJoker({ code, name: name || getJokerFxSpec(code).label })
+    instantTimer.current = window.setTimeout(() => {
+      setInstantJoker(null)
+      instantTimer.current = null
+    }, 1200)
+  }, [])
+
+  const playJokerFx = useCallback((code: string, castSquares: string[], opts?: { name?: string; silentCard?: boolean }) => {
     const spec = getJokerFxSpec(code)
+    if (!opts?.silentCard) flashInstantJoker(code, opts?.name)
 
     const clearBoard = () => {
       if (boardFxTimer.current != null) window.clearTimeout(boardFxTimer.current)
@@ -306,7 +323,7 @@ export function MatchPage() {
     }
     setJokerBurst({ squares, code, at: Date.now() })
     burstTimer.current = window.setTimeout(clearBurst, spec.durationMs + 80)
-  }, [])
+  }, [flashInstantJoker])
 
   const clearJokerFx = useCallback(() => {
     if (boardFxTimer.current != null) window.clearTimeout(boardFxTimer.current)
@@ -670,6 +687,7 @@ export function MatchPage() {
     (p: MatchJokerFxPayload) => {
       if (user?.uid && p.uid === user.uid) return
       setRemoteAim(null)
+      setRivalAimLabel(null)
       if (p.fen) {
         setOptimisticFen(p.fen)
         setState((prev) => {
@@ -679,7 +697,13 @@ export function MatchPage() {
           return next
         })
       }
-      playJokerFx(p.code, p.squares ?? [])
+      const label = getJokerFxSpec(p.code).label
+      playJokerFx(p.code, p.squares ?? [], { name: label })
+      setRivalAimLabel(`Rival usó ${label}`)
+      window.setTimeout(
+        () => setRivalAimLabel((cur) => (cur === `Rival usó ${label}` ? null : cur)),
+        2200,
+      )
     },
     [user?.uid, playJokerFx],
   )
@@ -687,11 +711,9 @@ export function MatchPage() {
   const onJokerAimPulse = useCallback(
     (p: MatchJokerAimPayload) => {
       if (user?.uid && p.uid === user.uid) return
-      // Solo espectadores: el rival no ve el apuntado del oponente
-      const spectator = Boolean(stateRef.current && !stateRef.current.you)
-      if (!spectator) return
       if (!p.active || !p.code) {
         setRemoteAim((prev) => (prev && prev.uid === p.uid ? null : prev))
+        setRivalAimLabel(null)
         return
       }
       const spec = getJokerFxSpec(p.code)
@@ -702,6 +724,7 @@ export function MatchPage() {
         code: p.code,
         selected: p.selected ?? [],
       })
+      setRivalAimLabel(`Rival apunta · ${spec.label}`)
     },
     [user?.uid],
   )
@@ -799,13 +822,36 @@ export function MatchPage() {
     if (!prev || prev === fen) return
     if (skipMoveSfxRef.current) {
       skipMoveSfxRef.current = false
+      // Aun con skip (jugada propia), avisar jaque al rival
+      try {
+        if (new Chess(fen).isCheck()) playCheckSound()
+      } catch {
+        /* ignore */
+      }
       return
     }
     const prevBoard = prev.split(' ')[0]
     const nextBoard = fen.split(' ')[0]
     if (prevBoard === nextBoard) return
     playMoveSound({ capture: fenPieceCount(fen) < fenPieceCount(prev) })
+    try {
+      if (new Chess(fen).isCheck()) playCheckSound()
+    } catch {
+      /* ignore */
+    }
   }, [match?.fen])
+
+  // SFX ilegal / regla: al mostrar error de jugada/aim
+  useEffect(() => {
+    if (!error) return
+    if (
+      /ilegal|Cadena de Sangre|trayectoria|Gravitacional|Giratiempo|Espejo|objetivo válido|fuera del tablero/i.test(
+        error,
+      )
+    ) {
+      playIllegalSound()
+    }
+  }, [error])
 
   /** Color del jugador al que anima el espectador (?cheer=username). */
   const cheerTargetColor = useMemo((): 'white' | 'black' => {
@@ -865,7 +911,15 @@ export function MatchPage() {
   const showShopModal = isShop && !isFinished && shopIntroDone
   const dimMeta = getDimension(match?.current_dimension)
   const darkDim = isDarkDimension(dimMeta.id)
-  const dimPieces = useMemo(() => piecesForDimension(darkDim), [darkDim])
+  const dimPieces = useMemo(() => {
+    const fogEnemy =
+      match?.current_dimension === 'bluriel' && yourTurn && you?.color
+        ? you.color === 'white'
+          ? ('b' as const)
+          : ('w' as const)
+        : undefined
+    return piecesForDimension(darkDim, { fogEnemy })
+  }, [darkDim, match?.current_dimension, yourTurn, you?.color])
   const openingPrimo =
     Boolean(match) &&
     !primoIntroDone &&
@@ -1148,6 +1202,32 @@ export function MatchPage() {
     })
   }, [state?.effects, you?.id])
 
+  const bloodForcedTargets = useMemo(() => {
+    if (aim || !match || !you?.color) return [] as string[]
+    if (!yourTurn || busy || inShopPhase || isFinished || optimisticFen) return []
+    if (match.current_dimension !== 'cadena_sangre') return []
+    return forcedCaptureSquares({
+      fen: fenWithSideToMove(match.fen, match.turn_color),
+      color: you.color,
+      dimension: match.current_dimension,
+      blocked: blockedSquares,
+      pathBlocked: pathBlockedSquares,
+      ghostActive,
+    })
+  }, [
+    aim,
+    match,
+    you,
+    yourTurn,
+    busy,
+    inShopPhase,
+    isFinished,
+    optimisticFen,
+    blockedSquares,
+    pathBlockedSquares,
+    ghostActive,
+  ])
+
   const moveHints = useMemo(() => {
     if (aim || !match || !you?.color) return { moves: [] as string[], captures: [] as string[] }
     const from = selectedSquare
@@ -1159,8 +1239,17 @@ export function MatchPage() {
       giratiempo_active?: boolean
       giratiempo_captures?: number
     }
-    return legalInteractionSquares({
-      fen: fenWithSideToMove(match.fen, match.turn_color),
+    const fen = fenWithSideToMove(match.fen, match.turn_color)
+    let chess: Chess | null = null
+    try {
+      chess = new Chess(fen)
+    } catch {
+      chess = null
+    }
+    const piece = chess?.get(from as 'a1')
+    const isKing = piece?.type === 'k'
+    const hints = legalInteractionSquares({
+      fen,
       from,
       color: you.color,
       dimension: match.current_dimension,
@@ -1171,6 +1260,16 @@ export function MatchPage() {
         youExt.giratiempo_active && (youExt.giratiempo_captures ?? 0) >= 1,
       ),
     })
+    // Cadena global: si hay captura obligatoria y esta pieza no puede capturar, no pintar quietos
+    if (
+      match.current_dimension === 'cadena_sangre' &&
+      !isKing &&
+      bloodForcedTargets.length > 0 &&
+      hints.captures.length === 0
+    ) {
+      return { moves: [] as string[], captures: [] as string[] }
+    }
+    return hints
   }, [
     aim,
     match,
@@ -1184,6 +1283,7 @@ export function MatchPage() {
     blockedSquares,
     pathBlockedSquares,
     ghostActive,
+    bloodForcedTargets,
   ])
 
   const jokerHints = useMemo(() => {
@@ -1217,8 +1317,8 @@ export function MatchPage() {
     return { squares, theme: spec.theme, code: aim.mode.code }
   }, [aim, jokerHints])
 
-  /** Local (jugador) o remoto (espectador): mismo overlay de partículas por comodín. */
-  const displayJokerAim = jokerAimAura ?? (isSpectator ? remoteAim : null)
+  /** Local o remoto (rival / espectador): mismo overlay de partículas por comodín. */
+  const displayJokerAim = jokerAimAura ?? remoteAim
   const hadPublishedAim = useRef(false)
 
   // Publicar aim → espectadores ven partículas / casillas en vivo
@@ -1330,6 +1430,11 @@ export function MatchPage() {
       }
     }
 
+    // Cadena: capturas obligatorias siempre visibles en tu turno
+    for (const sq of bloodForcedTargets) {
+      styles[sq] = { ...(styles[sq] ?? {}), ...indicatorStyle('blood_capture') }
+    }
+
     // Destinos legales (parpadeo a tamaño de casilla)
     for (const sq of moveHints.moves) {
       styles[sq] = { ...(styles[sq] ?? {}), ...indicatorStyle('move') }
@@ -1364,7 +1469,7 @@ export function MatchPage() {
               : 'inset 0 0 0 2px rgba(180, 150, 60, 0.7)',
         }
       })
-    } else if (isSpectator && remoteAim) {
+    } else if (remoteAim) {
       for (const sq of remoteAim.squares) {
         styles[sq] = {
           ...(styles[sq] ?? {}),
@@ -1425,6 +1530,7 @@ export function MatchPage() {
     you?.id,
     invisibleHints,
     moveHints,
+    bloodForcedTargets,
     jokerHints,
     selectedSquare,
     match?.current_dimension,
@@ -1742,12 +1848,16 @@ export function MatchPage() {
       try {
         const token = await getToken()
         if (!token) throw new Error('Sin sesión')
-        const { state: s } = await api.makeMove(token, id, {
+        const res = await api.makeMove(token, id, {
           from: sourceSquare,
           to: targetSquare,
           timeSpentMs: spent,
         })
-        applyState(s as MatchState, { resetClock: true, reason: 'move' })
+        applyState(res.state as MatchState, { resetClock: true, reason: 'move' })
+        for (const fx of res.botJokerFx ?? []) {
+          playJokerFx(fx.code, fx.squares ?? [], { name: getJokerFxSpec(fx.code).label })
+          setRivalAimLabel(`Rival usó ${getJokerFxSpec(fx.code).label}`)
+        }
       } catch (err) {
         setOptimisticFen(null)
         setError(err instanceof Error ? err.message : 'Jugada ilegal')
@@ -2155,6 +2265,36 @@ export function MatchPage() {
     applyState(s as MatchState, { reason: 'resign' })
   }
 
+  async function offerDraw() {
+    if (isSpectator || busy) return
+    setBusy(true)
+    try {
+      const token = await getToken()
+      if (!token) return
+      const { state: s } = await api.offerDraw(token, id)
+      applyState(s as MatchState, { reason: 'draw_offer' })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo ofrecer tablas')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function respondDraw(accept: boolean) {
+    if (isSpectator || busy) return
+    setBusy(true)
+    try {
+      const token = await getToken()
+      if (!token) return
+      const { state: s } = await api.respondDraw(token, id, accept)
+      applyState(s as MatchState, { reason: accept ? 'draw_accept' : 'draw_decline' })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo responder a tablas')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   /** Emoji del espectador: Neon valida cooldown → Portal hace el fan-out. */
   async function sendSpectatorEmoji(emoji: string) {
     if (!emoji || !user?.uid || emojiCooldownLeft > 0) return
@@ -2264,7 +2404,13 @@ export function MatchPage() {
         message={error}
         tone="error"
         dark={darkDim}
-        className={aim ? '!top-[8.5rem] sm:!top-[5.5rem]' : undefined}
+        className={aim || rivalAimLabel ? '!top-[8.5rem] sm:!top-[5.5rem]' : undefined}
+      />
+      <MatchToast
+        message={!aim ? rivalAimLabel : null}
+        tone="aim"
+        dark={darkDim}
+        className="!top-14 sm:!top-4"
       />
       {aim ? (
         <JokerTargetBanner
@@ -2276,6 +2422,11 @@ export function MatchPage() {
           onCancel={() => setAim(null)}
         />
       ) : null}
+      <InstantJokerFx
+        open={Boolean(instantJoker)}
+        code={instantJoker?.code ?? ''}
+        name={instantJoker?.name ?? ''}
+      />
       <ShopIntroOverlay
         open={showShopIntro && showMatchBoard}
         cycleIndex={match.cycle_index}
@@ -2343,15 +2494,51 @@ export function MatchPage() {
               </span>
             ) : null}
           </div>
-          <div className="flex items-center gap-1.5">
+          <div className="flex flex-wrap items-center justify-end gap-1.5">
             {isSpectator && !isFinished ? null : !isFinished && !isWaitingRival ? (
-              <button
-                type="button"
-                onClick={() => void resign()}
-                className="btn-ghost !px-3 !py-1 text-xs"
-              >
-                Rendirse
-              </button>
+              <>
+                {match.draw_offered_by &&
+                you?.profile_id &&
+                match.draw_offered_by !== you.profile_id ? (
+                  <>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void respondDraw(true)}
+                      className="btn-primary !px-3 !py-1 text-xs disabled:opacity-50"
+                    >
+                      Aceptar tablas
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void respondDraw(false)}
+                      className="btn-ghost !px-3 !py-1 text-xs disabled:opacity-50"
+                    >
+                      Rechazar
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={busy || Boolean(match.draw_offered_by)}
+                    onClick={() => void offerDraw()}
+                    className="btn-ghost !px-3 !py-1 text-xs disabled:opacity-50"
+                    title={
+                      match.draw_offered_by ? 'Esperando respuesta del rival' : 'Ofrecer tablas'
+                    }
+                  >
+                    {match.draw_offered_by ? 'Tablas…' : 'Tablas'}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => void resign()}
+                  className="btn-ghost !px-3 !py-1 text-xs"
+                >
+                  Rendirse
+                </button>
+              </>
             ) : isFinished ? (
               <button type="button" onClick={() => navigate('/')} className="btn-primary !px-3 !py-1 text-xs">
                 Salir
@@ -2383,6 +2570,11 @@ export function MatchPage() {
             <h1 className="font-display mt-1 text-xl leading-tight text-[var(--color-ink)] lg:text-2xl">
               {isWaitingRival ? 'Esperando rival…' : dimMeta.title}
             </h1>
+            {bloodForcedTargets.length > 0 ? (
+              <p className="font-label mt-2 text-[10px] uppercase tracking-[0.14em] text-[var(--color-error)]">
+                Captura obligatoria · el rey puede escapar
+              </p>
+            ) : null}
             <p className="mt-3 text-sm leading-relaxed text-[var(--color-ink-muted)]">
               {isWaitingRival
                 ? match.invite_code
@@ -2453,6 +2645,11 @@ export function MatchPage() {
               <h1 className="font-display text-base text-[var(--color-ink)]">
                 {isWaitingRival ? 'Esperando rival…' : dimMeta.title}
               </h1>
+              {bloodForcedTargets.length > 0 ? (
+                <p className="font-label mt-0.5 text-[10px] uppercase tracking-[0.14em] text-[var(--color-error)]">
+                  Captura obligatoria · el rey puede escapar
+                </p>
+              ) : null}
               {isWaitingRival ? (
                 <div className="mx-auto mt-1.5 flex w-full max-w-[360px] flex-col items-center gap-1.5">
                   {match.invite_code ? (

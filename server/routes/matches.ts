@@ -503,26 +503,28 @@ matchesRouter.post('/:id/move', requireAuth, async (req, res, next) => {
         ${result.isCheck},
         ${result.isMate},
         ${timeSpentMs},
-        ${JSON.stringify({ events: result.events, ghost: result.ghostUsed })}::jsonb
+        ${JSON.stringify({ events: result.events, ghost: result.ghostUsed })}::jsonb,
+        ${result.isStalemate}
       )
     `
     await persistEngineOps(matchId, result, { updateFen: false, cycleIndex: ctx.cycleIndex })
 
     // Bot reply if match still active and it's bot's turn
     let after = await getState(matchId, req.user!.uid)
+    const botJokerFx: { code: string; squares: string[] }[] = []
     try {
       const afterStatus = (after?.match as { status?: string } | undefined)?.status
       if (afterStatus === 'shop') {
         after = await maybeBotBuyJokers(matchId, after!, req.user!.uid)
       }
-      after = await maybeBotMove(matchId, after, req.user!.uid)
+      after = await maybeBotMove(matchId, after, req.user!.uid, 0, botJokerFx)
     } catch (botErr) {
       console.warn('maybeBotMove failed', botErr)
       after = (await getState(matchId, req.user!.uid)) ?? after
     }
 
     // If shop phase, keep as is — client shows shop
-    res.json({ state: after, events: result.events })
+    res.json({ state: after, events: result.events, botJokerFx })
   } catch (err) {
     next(err)
   }
@@ -559,11 +561,21 @@ const INSTANT_EFFECT_KINDS_BOT = [
   'giratiempo',
 ]
 
+function squaresFromJokerPayload(payload: Record<string, unknown>): string[] {
+  const out: string[] = []
+  for (const k of ['square', 'from', 'to', 'a', 'b'] as const) {
+    const v = payload[k]
+    if (typeof v === 'string' && /^[a-h][1-8]$/i.test(v)) out.push(v.toLowerCase())
+  }
+  return [...new Set(out)]
+}
+
 async function maybeBotMove(
   matchId: string,
   state: Record<string, unknown> | null,
   humanUid: string,
   depth = 0,
+  jokerFxOut: { code: string; squares: string[] }[] = [],
 ): Promise<Record<string, unknown> | null> {
   if (!state || depth > 2) return state
   const match = state.match as Record<string, unknown>
@@ -629,6 +641,10 @@ async function maybeBotMove(
             WHERE match_id = ${matchId}::uuid AND kind = ${kind}::effect_kind AND is_active
           `
         }
+        jokerFxOut.push({
+          code: plan.code,
+          squares: squaresFromJokerPayload(plan.payload as Record<string, unknown>),
+        })
         state = (await getState(matchId, humanUid)) ?? state
         ctx = await engineContextFor(matchId, state, bot.color as Color)
       } catch (err) {
@@ -660,7 +676,7 @@ async function maybeBotMove(
     after = await maybeBotBuyJokers(matchId, after!, humanUid)
   }
 
-  return maybeBotMove(matchId, after, humanUid, depth + 1)
+  return maybeBotMove(matchId, after, humanUid, depth + 1, jokerFxOut)
 }
 
 async function recordBotMove(
@@ -682,7 +698,8 @@ async function recordBotMove(
       ${result.isCheck},
       ${result.isMate},
       ${600 + Math.floor(Math.random() * 900)},
-      ${JSON.stringify({ bot: true, events: result.events })}::jsonb
+      ${JSON.stringify({ bot: true, events: result.events })}::jsonb,
+      ${result.isStalemate}
     )
   `
   await persistEngineOps(matchId, result, { updateFen: false, cycleIndex })
@@ -1068,6 +1085,42 @@ matchesRouter.post('/:id/resign', requireAuth, async (req, res, next) => {
     const state = await getState(req.params.id, req.user!.uid)
     res.json({ state })
   } catch (err) {
+    next(err)
+  }
+})
+
+matchesRouter.post('/:id/draw/offer', requireAuth, async (req, res, next) => {
+  try {
+    await sql`SELECT * FROM fn_offer_draw(${req.user!.uid}, ${req.params.id}::uuid)`
+    const state = await getState(req.params.id, req.user!.uid)
+    res.json({ state })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : ''
+    if (message.includes('not active') || message.includes('not in match')) {
+      res.status(409).json({ error: message })
+      return
+    }
+    next(err)
+  }
+})
+
+matchesRouter.post('/:id/draw/respond', requireAuth, async (req, res, next) => {
+  try {
+    const accept = Boolean(req.body?.accept)
+    await sql`SELECT * FROM fn_respond_draw(${req.user!.uid}, ${req.params.id}::uuid, ${accept})`
+    const state = await getState(req.params.id, req.user!.uid)
+    res.json({ state })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : ''
+    if (
+      message.includes('no draw offer') ||
+      message.includes('own offer') ||
+      message.includes('not active') ||
+      message.includes('not in match')
+    ) {
+      res.status(409).json({ error: message })
+      return
+    }
     next(err)
   }
 })

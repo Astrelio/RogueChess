@@ -211,6 +211,48 @@ export function legalInteractionSquares(opts: LegalMovesOpts): {
   }
 }
 
+/**
+ * Destinos de captura obligatoria en Cadena de Sangre (todas las piezas del bando,
+ * excepto escapes del rey). Vacío si no hay captura forzada global.
+ */
+export function forcedCaptureSquares(opts: {
+  fen: string
+  color: 'white' | 'black'
+  dimension: string
+  blocked: Set<string>
+  pathBlocked?: Set<string>
+  ghostActive?: boolean
+}): string[] {
+  if (opts.dimension !== 'cadena_sangre') return []
+  let chess: Chess
+  try {
+    chess = new Chess(opts.fen)
+  } catch {
+    return []
+  }
+  const me = opts.color === 'white' ? 'w' : 'b'
+  const targets = new Set<string>()
+  let anyCapture = false
+  for (const sq of allSquares()) {
+    const p = chess.get(sq as Square)
+    if (!p || p.color !== me || p.type === 'k') continue
+    const { captures } = legalInteractionSquares({
+      fen: opts.fen,
+      from: sq,
+      color: opts.color,
+      dimension: opts.dimension,
+      blocked: opts.blocked,
+      pathBlocked: opts.pathBlocked,
+      ghostActive: opts.ghostActive,
+    })
+    if (captures.length) {
+      anyCapture = true
+      for (const c of captures) targets.add(c)
+    }
+  }
+  return anyCapture ? [...targets] : []
+}
+
 export type JokerHighlightOpts = {
   code: string
   fen: string

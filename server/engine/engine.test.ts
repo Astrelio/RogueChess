@@ -671,6 +671,21 @@ test('cadena_sangre: el rey puede escapar sin capturar', async () => {
   assert.equal(quietKing.ok, true, quietKing.ok ? '' : quietKing.error)
 })
 
+test('ahogado: sin jaque y sin legales → isStalemate', () => {
+  // Ka8, Kb6, Rc7 → Rb7: el negro no tiene escapes y no está en jaque
+  const fen = 'k7/2R5/1K6/8/8/8/8/8 w - - 0 1'
+  const res = applyPlayerMove(makeCtx({ fen, dimension: 'primo' }), {
+    from: 'c7',
+    to: 'b7',
+  })
+  assert.equal(res.ok, true, res.ok ? '' : res.error)
+  if (res.ok) {
+    assert.equal(res.isCheck, false)
+    assert.equal(res.isMate, false)
+    assert.equal(res.isStalemate, true)
+  }
+})
+
 test('ghost no puede capturar al rey', () => {
   const fen = '8/8/8/8/8/8/8/R6k w - - 0 1'
   const ctx = makeCtx({
