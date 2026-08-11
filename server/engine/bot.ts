@@ -502,10 +502,12 @@ export function planBotJoker(
     }
   }
 
-  // Tras el mejor joker, comprobar que aún hay una jugada decente
-  if (!best || bestScore < 38) return null
-  if (best.score < 70) {
-    const after = applyJoker(ctx, best.code, best.payload)
+  // Tras el mejor joker, comprobar que aún hay una jugada decente.
+  // Copiar a `plan`: TS no rastrea asignaciones a `best` hechas dentro de `consider`.
+  const plan = best
+  if (!plan || bestScore < 38) return null
+  if (bestScore < 70) {
+    const after = applyJoker(ctx, plan.code, plan.payload)
     if (after.ok && after.newFen) {
       const nextCtx = withFen(ctx, after.newFen, ctx.turnColor, ctx.moverColor)
       const reply = pickBotMove(nextCtx, { depth: 2, timeMs: 120 })
@@ -517,5 +519,5 @@ export function planBotJoker(
       if (gain < 15 && !moveRes.isCheck && !moveRes.isMate) return null
     }
   }
-  return best
+  return plan
 }
